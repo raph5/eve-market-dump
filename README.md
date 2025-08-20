@@ -134,6 +134,9 @@ This codebase aims for POSIX (IEEE Std 1003.1-2017) compliance.
 
 ## Dependecies
 
-libcurl 8.15.0 (available in deps folder)
+mongoose 7.18 (available in deps folder)
+jansson 2.13.1 (available in deps folder)
+zlib 1.3.1 (available in deps folder)
+POSIX and libc
+
 TODO: Include copyright notice
-posix and libc

@@ -1,0 +1,6 @@
+-Ideps
+-Isrc
+-I/usr/local/include
+-std=c99
+-Wall
+-pedantic
