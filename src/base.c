@@ -14,6 +14,8 @@
 #include <getopt.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <ctype.h>
+#include <inttypes.h>
 
 /******************************************************************************
  * 3rd party dependencies                                                     *
@@ -58,6 +60,61 @@ void panic(const char *msg) {
   abort();
 }
 #endif
+
+// TODO: write my own assert that call `exit` instead of `abort`
+
+/******************************************************************************
+ * logs                                                                       *
+ ******************************************************************************/
+void log_print(char *fmt, ...) {
+  time_t t;
+  struct tm tm;
+  time(&t);
+  localtime_r(&t, &tm);
+  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d ", 1900 + tm.tm_year,
+          tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+
+  fputc('\n', stdout);
+}
+
+void log_warn(char *fmt, ...) {
+  time_t t;
+  struct tm tm;
+  time(&t);
+  localtime_r(&t, &tm);
+  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;33mwarn:\x1b[0m ",
+          1900 + tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min,
+          tm.tm_sec);
+
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+
+  fputc('\n', stdout);
+}
+
+void log_error(char *fmt, ...) {
+  time_t t;
+  struct tm tm;
+  time(&t);
+  localtime_r(&t, &tm);
+  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;31merror:\x1b[0m ",
+          1900 + tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min,
+          tm.tm_sec);
+
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stdout, fmt, ap);
+  va_end(ap);
+
+  fputc('\n', stdout);
+}
 
 /******************************************************************************
  * strings                                                                    *
@@ -154,59 +211,6 @@ int string_cmp(struct string a, struct string b) {
 }
 
 /******************************************************************************
- * logs                                                                       *
- ******************************************************************************/
-void log_print(char *fmt, ...) {
-  time_t t;
-  struct tm tm;
-  time(&t);
-  localtime_r(&t, &tm);
-  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d ", 1900 + tm.tm_year,
-          tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stdout, fmt, ap);
-  va_end(ap);
-
-  fputc('\n', stdout);
-}
-
-void log_warn(char *fmt, ...) {
-  time_t t;
-  struct tm tm;
-  time(&t);
-  localtime_r(&t, &tm);
-  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;33mwarn:\x1b[0m ",
-          1900 + tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min,
-          tm.tm_sec);
-
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stdout, fmt, ap);
-  va_end(ap);
-
-  fputc('\n', stdout);
-}
-
-void log_error(char *fmt, ...) {
-  time_t t;
-  struct tm tm;
-  time(&t);
-  localtime_r(&t, &tm);
-  fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;31merror:\x1b[0m ",
-          1900 + tm.tm_year, tm.tm_mon, tm.tm_mday, tm.tm_hour, tm.tm_min,
-          tm.tm_sec);
-
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stdout, fmt, ap);
-  va_end(ap);
-
-  fputc('\n', stdout);
-}
-
-/******************************************************************************
  * errors                                                                     *
  ******************************************************************************/
 typedef int err_t;
@@ -214,7 +218,7 @@ const err_t E_OK = 0;
 const err_t E_ERR = 1;
 
 #define THREAD_ERROR_LEN 8192
-__thread char thread_errmsg_buf[THREAD_ERROR_LEN];
+__thread char thread_errmsg_buf[THREAD_ERROR_LEN + 1];
 __thread struct string thread_errmsg = {0};
 
 void errmsg_set(struct string msg) {
@@ -254,6 +258,121 @@ struct string errmsg_get(void) {
 void errmsg_print(void) {
   log_error("%.*s", (int) thread_errmsg.len, thread_errmsg.buf);
 }
+
+void errmsg_panic(void) {
+  thread_errmsg_buf[thread_errmsg.len] = '\0';
+  panic(thread_errmsg_buf);
+}
+
+void errmsg_print_prefix(const char *prefix) {
+  errmsg_prefix(prefix);
+  errmsg_print();
+}
+
+void errmsg_panic_prefix(const char *prefix) {
+  errmsg_prefix(prefix);
+  errmsg_panic();
+}
+
+/******************************************************************************
+ * dynamic string                                                             *
+ ******************************************************************************/
+struct dstring {
+  char *buf;
+  size_t len;
+  size_t cap;
+};
+
+err_t dstring_create(struct dstring *ds, size_t cap) {
+  assert(ds != NULL);
+  char *buf = malloc(cap);
+  if (buf == NULL) {
+    errmsg_fmt("malloc error: %s", strerror(errno));
+    return E_ERR;
+  }
+  *ds = (struct dstring) { .buf = buf, .len = 0, .cap = cap };
+  return E_OK;
+}
+
+void dstring_destroy(struct dstring *ds) {
+  assert(ds != NULL);
+  free(ds->buf);
+  ds->buf = NULL;
+  ds->len = 0;
+  ds->cap = 0;
+}
+
+err_t dstring_push(struct dstring *ds, struct string s) {
+  assert(ds != NULL);
+  size_t new_cap = ds->cap;
+  while (new_cap < ds->len + s.len) {
+    new_cap *= 2;
+  }
+  if (new_cap > ds->cap) {
+    ds->buf = realloc(ds->buf, new_cap);
+    if (ds->buf == NULL) {
+      errmsg_fmt("realloc error: %s", strerror(errno));
+      return E_ERR;
+    }
+    ds->cap = new_cap;
+  }
+  memcpy(ds->buf + ds->len, s.buf, s.len);
+  ds->len += s.len;
+  return E_OK;
+}
+
+struct string string_slice(struct dstring ds, size_t begin, size_t end) {
+  assert(begin <= end);
+  if (end > ds.len) {
+    panic("string_slice: out of bounds");
+  }
+  return (struct string) { .buf = ds.buf + begin, .len = end - begin };
+}
+
+/******************************************************************************
+ * darray                                                                     *
+ ******************************************************************************/
+#define IMPLEMENT_DARRAY(darray_type, darray_name) \
+struct darray_name##_darray { \
+  darray_type *buf; \
+  size_t len; \
+  size_t cap; \
+}; \
+ \
+err_t darray_name##_darray_create(struct darray_name##_darray *da, size_t cap) { \
+  assert(da != NULL); \
+  darray_type *buf = malloc(cap * sizeof(darray_type)); \
+  if (buf == NULL) { \
+    errmsg_fmt("malloc error: %s", strerror(errno)); \
+    return E_ERR; \
+  } \
+  *da = (struct darray_name##_darray) { .buf = buf, .len = 0, .cap = cap }; \
+  return E_OK; \
+} \
+ \
+void darray_name##_darray_destroy(struct darray_name##_darray *da) { \
+  assert(da != NULL); \
+  free(da->buf); \
+  da->buf = 0; \
+  da->len = 0; \
+} \
+ \
+err_t darray_name##_darray_push(struct darray_name##_darray *da, darray_type x) { \
+  assert(da != NULL); \
+  if (da->len + 1 > da->cap) { \
+    da->buf = realloc(da->buf, 2 * da->cap * sizeof(darray_type)); \
+    if (da->buf == NULL) { \
+      errmsg_fmt("realloc error: %s", strerror(errno)); \
+      return E_ERR; \
+    } \
+    da->cap *= 2; \
+  } \
+  da->buf[da->len] = x; \
+  da->len += 1; \
+  return E_OK; \
+}
+
+IMPLEMENT_DARRAY(struct string, string)
 
 /******************************************************************************
  * context                                                                    *
@@ -354,7 +473,6 @@ void mutex_unlock(mutex_t *mu) {
 /******************************************************************************
  * cli interface                                                              *
  ******************************************************************************/
-
 const char* MAN =
 "NAME\n"
 "\temd - Eve Market Dump\n"

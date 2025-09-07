@@ -1,4 +1,5 @@
 -Ideps
+-Idata
 -Isrc
 -I/usr/local/include
 -std=c99

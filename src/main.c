@@ -1,5 +1,7 @@
 #include "base.c"
 #include "secrets.c"
+#include "csv.c"
+#include "locations.c"
 #include "esi.c"
 #include "server.c"
 
@@ -32,29 +34,16 @@ int main(int argc, char *argv[]) {
 
   struct args args;
   err = args_parse(argc, argv, &args);
-  if (err == E_ERR) {
+  if (err != E_OK) {
     return 1;
   }
 
   err = secret_table_parse(args.secrets);
-  if (err == E_ERR) {
+  if (err != E_OK) {
     log_error("secret_table_parse");
     errmsg_print();
     return 1;
   }
-
-  // TEST:
-  esi_thread_init();
-  struct esi_response res = {};
-  err = esi_fetch(&res, string_new("GET"), string_new("/universe/structures/1042499803831"), (struct string) {}, true, 1);
-  if (err != E_OK) {
-    errmsg_prefix("esi_fetch: ");
-    errmsg_print();
-  }
-  printf("pages: %zu\n", res.pages);
-  printf("body:\n\n%.*s\n", (int) res.body.len, res.body.buf);
-  esi_response_destroy(&res);
-  esi_thread_deinit();
 
   global_deinit();
   return 0;

@@ -564,7 +564,7 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
 
 cleanup:
   if (body_file != NULL) fclose(body_file);
-  if (err == E_ERR) string_destroy(body);
+  if (err != E_OK) string_destroy(body);
   return err;
 }
 

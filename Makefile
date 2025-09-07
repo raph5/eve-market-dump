@@ -4,7 +4,7 @@ CC = clang
 CFLAGS = -std=c99 -Wall -Werror
 TARGET = emd
 SRC = src/main.c
-IDIR = -Isrc -Ideps
+IDIR = -Isrc -Ideps -Idata
 LIBS = -lz -ljansson -lcurl
 
 build: $(SRC) $(DEPS)
