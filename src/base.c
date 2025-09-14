@@ -9,7 +9,6 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <stdarg.h>
-#include <assert.h>
 #include <errno.h>
 #include <getopt.h>
 #include <pthread.h>
@@ -40,12 +39,29 @@
 /******************************************************************************
  * panic                                                                      *
  ******************************************************************************/
+#define panic(msg) _panic(msg, __LINE__, __FILE__)
+#define assert(test) _assert(test, __LINE__, __FILE__)
+
 #if FANCY_PANIC
 #include <unistd.h>
 #include <execinfo.h>
 
-void panic(const char *msg) {
-  fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m %s\n\nstracktrace:\n", msg);
+void _panic(const char *msg, int line, char *file) {
+  fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m file %s, line %d, %s\n\nstracktrace:\n",
+          file, line, msg);
+  
+  void *trace[4096];
+  int len = backtrace(trace, 4096);
+  backtrace_symbols_fd(trace, len, STDERR_FILENO);
+  // TODO: do, in fact, call cleanup
+  abort();
+}
+
+void _assert(bool test, int line, char *file) {
+  if (test) return;
+
+  fprintf(stderr, "\x1b[1;35massertion failed:\x1b[0m file %s, line %d\n\nstracktrace:\n",
+          file, line);
   
   void *trace[4096];
   int len = backtrace(trace, 4096);
@@ -54,14 +70,22 @@ void panic(const char *msg) {
   abort();
 }
 #else
-void panic(const char *msg) {
-  fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m %s\n", msg);
+void _panic(const char *msg, int line, char *file) {
+  fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m file %s, line %d, %s\n", file, line,
+          msg);
+  // TODO: do, in fact, call cleanup
+  abort();
+}
+
+void _assert(bool test, int line, char *file) {
+  if (test) return;
+
+  fprintf(stderr, "\x1b[1;35massertion failed:\x1b[0m file %s, line %d:\n",
+          file, line);
   // TODO: do, in fact, call cleanup
   abort();
 }
 #endif
-
-// TODO: write my own assert that call `exit` instead of `abort`
 
 /******************************************************************************
  * logs                                                                       *
@@ -238,17 +262,20 @@ void errmsg_fmt(const char *fmt, ...) {
 }
 
 void errmsg_prefix(const char *prefix) {
-  assert(thread_errmsg.len > 0);
-  assert(thread_errmsg.buf != NULL);
-  size_t prefix_len = strlen(prefix);
-  if (thread_errmsg.len + prefix_len > THREAD_ERROR_LEN) {
-    log_warn("error message too long (len = %zu)", thread_errmsg.len + prefix_len);
+  if (thread_errmsg.len == 0) {
+    errmsg_fmt("%s", prefix);
+  } else {
+    assert(thread_errmsg.buf != NULL);
+    size_t prefix_len = strlen(prefix);
+    if (thread_errmsg.len + prefix_len > THREAD_ERROR_LEN) {
+      log_warn("error message too long (len = %zu)", thread_errmsg.len + prefix_len);
+    }
+    for (ssize_t i = thread_errmsg.len; i >= 0; --i) {
+      thread_errmsg.buf[i + prefix_len] = thread_errmsg.buf[i];
+    }
+    memcpy(thread_errmsg.buf, prefix, prefix_len);
+    thread_errmsg.len += prefix_len;
   }
-  for (ssize_t i = thread_errmsg.len; i >= 0; --i) {
-    thread_errmsg.buf[i + prefix_len] = thread_errmsg.buf[i];
-  }
-  memcpy(thread_errmsg.buf, prefix, prefix_len);
-  thread_errmsg.len += prefix_len;
 }
 
 struct string errmsg_get(void) {
@@ -321,6 +348,15 @@ err_t dstring_push(struct dstring *ds, struct string s) {
   return E_OK;
 }
 
+void dstring_pop(struct dstring *ds, size_t len) {
+  assert(ds != NULL);
+  if (ds->len < len) {
+    log_error("dstring_pop: can't pop %zu bytes from dstring of len %zu", len, ds->len);
+    panic("dstring_pop: can't pop");
+  }
+  ds->len -= len;
+}
+
 struct string string_slice(struct dstring ds, size_t begin, size_t end) {
   assert(begin <= end);
   if (end > ds.len) {
@@ -330,37 +366,37 @@ struct string string_slice(struct dstring ds, size_t begin, size_t end) {
 }
 
 /******************************************************************************
- * darray                                                                     *
+ * vector (dynamic array)                                                     *
  ******************************************************************************/
-#define IMPLEMENT_DARRAY(darray_type, darray_name) \
-struct darray_name##_darray { \
-  darray_type *buf; \
+#define IMPLEMENT_VEC(vec_type, vec_name) \
+struct vec_name##_vec { \
+  vec_type *buf; \
   size_t len; \
   size_t cap; \
 }; \
  \
-err_t darray_name##_darray_create(struct darray_name##_darray *da, size_t cap) { \
+err_t vec_name##_vec_create(struct vec_name##_vec *da, size_t cap) { \
   assert(da != NULL); \
-  darray_type *buf = malloc(cap * sizeof(darray_type)); \
+  vec_type *buf = malloc(cap * sizeof(vec_type)); \
   if (buf == NULL) { \
     errmsg_fmt("malloc error: %s", strerror(errno)); \
     return E_ERR; \
   } \
-  *da = (struct darray_name##_darray) { .buf = buf, .len = 0, .cap = cap }; \
+  *da = (struct vec_name##_vec) { .buf = buf, .len = 0, .cap = cap }; \
   return E_OK; \
 } \
  \
-void darray_name##_darray_destroy(struct darray_name##_darray *da) { \
+void vec_name##_vec_destroy(struct vec_name##_vec *da) { \
   assert(da != NULL); \
   free(da->buf); \
   da->buf = 0; \
   da->len = 0; \
 } \
  \
-err_t darray_name##_darray_push(struct darray_name##_darray *da, darray_type x) { \
+err_t vec_name##_vec_push(struct vec_name##_vec *da, vec_type x) { \
   assert(da != NULL); \
   if (da->len + 1 > da->cap) { \
-    da->buf = realloc(da->buf, 2 * da->cap * sizeof(darray_type)); \
+    da->buf = realloc(da->buf, 2 * da->cap * sizeof(vec_type)); \
     if (da->buf == NULL) { \
       errmsg_fmt("realloc error: %s", strerror(errno)); \
       return E_ERR; \
@@ -370,9 +406,25 @@ err_t darray_name##_darray_push(struct darray_name##_darray *da, darray_type x) 
   da->buf[da->len] = x; \
   da->len += 1; \
   return E_OK; \
+} \
+ \
+vec_type vec_name##_vec_get(const struct vec_name##_vec *da, size_t i) { \
+  assert(da != NULL); \
+  if (i >= da->len) { \
+    panic("out of bounds"); \
+  } \
+  return da->buf[i]; \
+} \
+ \
+vec_type *vec_name##_vec_getp(const struct vec_name##_vec *da, size_t i) { \
+  assert(da != NULL); \
+  if (i >= da->len) { \
+    panic("out of bounds"); \
+  } \
+  return da->buf + i; \
 }
 
-IMPLEMENT_DARRAY(struct string, string)
+IMPLEMENT_VEC(size_t, size);
 
 /******************************************************************************
  * context                                                                    *
@@ -468,6 +520,92 @@ void mutex_unlock(mutex_t *mu) {
     log_error("mutex_unlock failed: %s", strerror(errno));
     panic("o rage, o desespoir!");
   }
+}
+
+/******************************************************************************
+ * serialization                                                              *
+ ******************************************************************************/
+err_t serialize_uint8(FILE *stream, uint8_t n) {
+  assert(stream != NULL);
+  unsigned char bytes[] = { n };
+  size_t count = fwrite(bytes, 1, 1, stream);
+  if (count < 1) {
+    errmsg_fmt("fwrite: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+err_t serialize_uint16(FILE *stream, uint16_t n) {
+  assert(stream != NULL);
+  unsigned char bytes[] = { n << 8, n };
+  size_t count = fwrite(bytes, 2, 1, stream);
+  if (count < 1) {
+    errmsg_fmt("fwrite: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+err_t serialize_uint32(FILE *stream, uint32_t n) {
+  assert(stream != NULL);
+  unsigned char bytes[] = { n << 24, n << 16, n << 8, n };
+  size_t count = fwrite(bytes, 4, 1, stream);
+  if (count < 1) {
+    errmsg_fmt("fwrite: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+err_t serialize_uint64(FILE *stream, uint64_t n) {
+  assert(stream != NULL);
+  unsigned char bytes[] = { n << 56, n << 48, n << 40, n << 32, n << 24, n << 16, n << 8, n };
+  size_t count = fwrite(bytes, 8, 1, stream);
+  if (count < 1) {
+    errmsg_fmt("fwrite: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+err_t serialize_int8(FILE *stream, int8_t n) {
+  return serialize_uint8(stream, (uint8_t) n);
+}
+
+err_t serialize_int16(FILE *stream, int16_t n) {
+  return serialize_uint16(stream, (uint16_t) n);
+}
+
+err_t serialize_int32(FILE *stream, int32_t n) {
+  return serialize_uint32(stream, (uint32_t) n);
+}
+
+err_t serialize_int64(FILE *stream, int64_t n) {
+  return serialize_uint64(stream, (uint64_t) n);
+}
+
+err_t serialize_float32(FILE *stream, float x) {
+  return serialize_uint32(stream, (uint32_t) x);
+}
+
+err_t serialize_float64(FILE *stream, double x) {
+  return serialize_uint64(stream, (uint64_t) x);
+}
+
+err_t serialize_string(FILE *stream, struct string s) {
+  assert(stream != NULL);
+  err_t err = serialize_uint64(stream, s.len);
+  if (err != E_OK) {
+    errmsg_prefix("serialize_uint64: ");
+    return E_ERR;
+  }
+  size_t count = fwrite(s.buf, s.len, 1, stream);
+  if (count < 1) {
+    errmsg_fmt("serialize_string: write: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
 }
 
 /******************************************************************************

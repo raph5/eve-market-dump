@@ -15,10 +15,10 @@ void esi_thread_deinit() {
   curl_easy_cleanup(esi_curl_thread_handle);
 }
 
-const size_t  SSO_ACCESS_TOKEN_LEN_MAX = 4096;
-char          sso_access_token[SSO_ACCESS_TOKEN_LEN_MAX];
-uint64_t      sso_access_token_expiry = 0;
-mutex_t       sso_access_token_mu = MUTEX_INIT;
+const size_t SSO_ACCESS_TOKEN_LEN_MAX = 4096;
+char         sso_access_token[SSO_ACCESS_TOKEN_LEN_MAX];
+uint64_t     sso_access_token_expiry = 0;
+mutex_t      sso_access_token_mu = MUTEX_INIT;
 
 // Will the curl handle passed as argument
 err_t sso_access_token_acquire(CURL *handle) {

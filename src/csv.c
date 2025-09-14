@@ -1,5 +1,8 @@
 // This is a csv parser. Multiline strings are not supported.
 
+const err_t E_CSV_BASE = 2000;
+const err_t E_CSV_EOF = E_CSV_BASE + 1;
+
 const char CSV_SEPARATOR = ',';
 const char CSV_NEWLINE   = '\n';
 
@@ -33,10 +36,12 @@ err_t csv_line_end(struct csv_reader *rdr) {
     return E_ERR;
   }
 
-  if (rdr->idx != rdr->buf_len) {
-    rdr->idx += 1;
-    rdr->line_start_idx = rdr->idx;
+  // a csv file may terminate by a '\n' byte
+  if (rdr->idx == rdr->buf_len || rdr->idx + 1 == rdr->buf_len) {
+    return E_CSV_EOF;
   }
+  rdr->idx += 1;
+  rdr->line_start_idx = rdr->idx;
   return E_OK;
 }
 
@@ -87,7 +92,7 @@ err_t csv_read_field(struct csv_reader *rdr, char *out, size_t out_len) {
   return E_OK;
 }
 
-err_t csv_read_int(struct csv_reader *rdr, intmax_t *n_ptr) {
+err_t csv_read_intmax(struct csv_reader *rdr, intmax_t *n_ptr) {
   assert(rdr != NULL);
   assert(n_ptr != NULL);
 
@@ -114,7 +119,43 @@ err_t csv_read_int(struct csv_reader *rdr, intmax_t *n_ptr) {
   return E_OK;
 }
 
-err_t csv_read_float(struct csv_reader *rdr, double *x_ptr) {
+err_t csv_read_int64(struct csv_reader *rdr, int64_t *n_ptr) {
+  assert(n_ptr != NULL);
+
+  intmax_t n_intmax;
+  err_t err = csv_read_intmax(rdr, &n_intmax);
+  if (err != E_OK) {
+    errmsg_prefix("csv_read_intmax: ");
+    return E_ERR;
+  }
+  if (n_intmax < INT64_MIN || n_intmax > INT64_MAX) {
+    errmsg_fmt("csv_read_int64: %j can be casted to an int64", n_intmax);
+    return E_ERR;
+  }
+
+  *n_ptr = (int64_t) n_intmax;
+  return E_OK;
+}
+
+err_t csv_read_int32(struct csv_reader *rdr, int32_t *n_ptr) {
+  assert(n_ptr != NULL);
+
+  intmax_t n_intmax;
+  err_t err = csv_read_intmax(rdr, &n_intmax);
+  if (err != E_OK) {
+    errmsg_prefix("csv_read_intmax: ");
+    return E_ERR;
+  }
+  if (n_intmax < INT32_MIN || n_intmax > INT32_MAX) {
+    errmsg_fmt("csv_read_int32: %j can be casted to an int32", n_intmax);
+    return E_ERR;
+  }
+
+  *n_ptr = (int32_t) n_intmax;
+  return E_OK;
+}
+
+err_t csv_read_float64(struct csv_reader *rdr, double *x_ptr) {
   assert(rdr != NULL);
   assert(x_ptr != NULL);
 
@@ -138,6 +179,20 @@ err_t csv_read_float(struct csv_reader *rdr, double *x_ptr) {
   }
 
   *x_ptr = x;
+  return E_OK;
+}
+
+err_t csv_read_float32(struct csv_reader *rdr, float *f_ptr) {
+  assert(f_ptr != NULL);
+
+  double x;
+  err_t err = csv_read_float64(rdr, &x);
+  if (err != E_OK) {
+    errmsg_prefix("csv_read_float64: ");
+    return E_ERR;
+  }
+
+  *f_ptr = x;
   return E_OK;
 }
 

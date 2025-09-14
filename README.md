@@ -31,10 +31,10 @@ typedef struct {
 } DumpHeader;
 ```
 
-All ints and floats are sent in network endianness (big-endian). Be also aware
-that c structs may have padding. Therefore, you can't directly bit cast raw
-data of the dump to their corresponding structs (which would also break strict
-aliasing btw).
+All ints are sent in network endianness (big-endian). Similarly floats are
+casted from their IEEE754 representations to an int and then sent as such.
+Be also aware that c structs may have padding. Therefore, you can't directly
+bit cast raw data of the dump to their corresponding structs.
 
 **Orders Dump:**
 

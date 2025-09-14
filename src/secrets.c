@@ -70,7 +70,6 @@ void secret_table_add(struct string key, struct string value) {
 err_t secret_table_parse(struct string json_secrets) {
   mutex_lock(&global_secret_table_mu, 5);
   assert(global_secret_table != NULL);
-  size_t secret_count = global_secret_table->count;
   mutex_unlock(&global_secret_table_mu);
   json_error_t error;
   json_t *root = json_loadb(json_secrets.buf, json_secrets.len, 0, &error);
@@ -88,6 +87,10 @@ err_t secret_table_parse(struct string json_secrets) {
 
   void *iter = json_object_iter(root);
   while (iter) {
+    mutex_lock(&global_secret_table_mu, 5);
+    size_t secret_count = global_secret_table->count;
+    mutex_unlock(&global_secret_table_mu);
+
     if (secret_count >= SECRET_COUNT_MAX) {
       errmsg_fmt("secrets: you got too many secrets...");
       json_decref(root);

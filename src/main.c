@@ -4,6 +4,7 @@
 #include "locations.c"
 #include "esi.c"
 #include "server.c"
+#include "hoardling.c"
 
 // by opposition with thread_init
 err_t global_init(void) {
@@ -27,7 +28,7 @@ void global_deinit(void) {
 int main(int argc, char *argv[]) {
   err_t err = global_init();
   if (err != E_OK) {
-    log_error("global_init");
+    errmsg_prefix("global_init: ");
     errmsg_print();
     return 1;
   }
@@ -40,10 +41,12 @@ int main(int argc, char *argv[]) {
 
   err = secret_table_parse(args.secrets);
   if (err != E_OK) {
-    log_error("secret_table_parse");
+    errmsg_prefix("secret_table_parse: ");
     errmsg_print();
     return 1;
   }
+
+  hoardling_locations(NULL);
 
   global_deinit();
   return 0;
