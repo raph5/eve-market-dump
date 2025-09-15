@@ -16,6 +16,8 @@
 #include <ctype.h>
 #include <inttypes.h>
 
+// TODO: assert types length
+
 /******************************************************************************
  * 3rd party dependencies                                                     *
  ******************************************************************************/
@@ -538,7 +540,7 @@ err_t serialize_uint8(FILE *stream, uint8_t n) {
 
 err_t serialize_uint16(FILE *stream, uint16_t n) {
   assert(stream != NULL);
-  unsigned char bytes[] = { n << 8, n };
+  unsigned char bytes[] = { n >> 8, n };
   size_t count = fwrite(bytes, 2, 1, stream);
   if (count < 1) {
     errmsg_fmt("fwrite: %s", strerror(errno));
@@ -549,7 +551,7 @@ err_t serialize_uint16(FILE *stream, uint16_t n) {
 
 err_t serialize_uint32(FILE *stream, uint32_t n) {
   assert(stream != NULL);
-  unsigned char bytes[] = { n << 24, n << 16, n << 8, n };
+  unsigned char bytes[] = { n >> 24, n >> 16, n >> 8, n };
   size_t count = fwrite(bytes, 4, 1, stream);
   if (count < 1) {
     errmsg_fmt("fwrite: %s", strerror(errno));
@@ -560,7 +562,7 @@ err_t serialize_uint32(FILE *stream, uint32_t n) {
 
 err_t serialize_uint64(FILE *stream, uint64_t n) {
   assert(stream != NULL);
-  unsigned char bytes[] = { n << 56, n << 48, n << 40, n << 32, n << 24, n << 16, n << 8, n };
+  unsigned char bytes[] = { n >> 56, n >> 48, n >> 40, n >> 32, n >> 24, n >> 16, n >> 8, n };
   size_t count = fwrite(bytes, 8, 1, stream);
   if (count < 1) {
     errmsg_fmt("fwrite: %s", strerror(errno));

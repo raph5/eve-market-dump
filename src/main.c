@@ -1,4 +1,5 @@
 #include "base.c"
+#include "dump.c"
 #include "secrets.c"
 #include "csv.c"
 #include "locations.c"

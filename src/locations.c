@@ -72,23 +72,40 @@ struct loc_loc {
 
 IMPLEMENT_VEC(struct loc_loc, loc);
 
-err_t serialize_loc(FILE *stream, struct loc_loc *loc,
-                    struct loc_name_collec *nc) {
+err_t dump_write_loc(struct dump *dump, struct loc_name_collec *nc,
+                     struct loc_loc *loc) {
   assert(loc != NULL);
   assert(nc != NULL);
 
-  if (serialize_uint64(stream, loc->id) != E_OK) goto error;
-  if (serialize_uint64(stream, loc->type_id) != E_OK) goto error;
-  if (serialize_uint64(stream, loc->corp_id) != E_OK) goto error;
-  if (serialize_uint64(stream, loc->system_id) != E_OK) goto error;
-  if (serialize_float32(stream, loc->security) != E_OK) goto error;
+  if (dump_write_uint64(dump, loc->id) != E_OK) goto error;
+  if (dump_write_uint64(dump, loc->type_id) != E_OK) goto error;
+  if (dump_write_uint64(dump, loc->corp_id) != E_OK) goto error;
+  if (dump_write_uint64(dump, loc->system_id) != E_OK) goto error;
+  if (dump_write_float32(dump, loc->security) != E_OK) goto error;
   struct string name = loc_name_collec_get(nc, loc->name_index);
-  if (serialize_string(stream, name) != E_OK) goto error;
+  if (dump_write_string(dump, name) != E_OK) goto error;
   return E_OK;
 
 error:
-  errmsg_prefix("serialize_uint64/float32/string");
+  errmsg_prefix("dump_write_uint64/float32/string");
   return E_ERR;
+}
+
+err_t dump_write_loc_table(struct dump *dump, struct loc_name_collec *nc,
+                           struct loc_loc *loc, size_t loc_len) {
+  if (dump_write_uint64(dump, loc_len) != E_OK) {
+    errmsg_prefix("dump_write_uint64: ");
+    return E_ERR;
+  }
+
+  for (size_t i = 0; i < loc_len; ++i) {
+    if (dump_write_loc(dump, nc, loc + i) != E_OK) {
+      errmsg_prefix("dump_write_loc :");
+      return E_ERR;
+    }
+  }
+
+  return E_OK;
 }
 
 err_t loc_csv_init(char *buf, size_t buf_len, struct csv_reader *rdr) {

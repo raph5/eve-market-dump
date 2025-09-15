@@ -3,3 +3,4 @@
 emd
 lib
 .cache
+*.dump

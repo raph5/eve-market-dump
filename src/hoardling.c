@@ -49,7 +49,26 @@ void *hoardling_locations(void *args) {
     }
   }
 
-  loc_loc_print(loc_vec_getp(&loc_vec, 0), &name_collec);
+  loc_loc_print(loc_vec.buf, &name_collec);
+
+  uint64_t date = (uint64_t) time(NULL);
+  struct dump loc_dump;
+  err = dump_open(&loc_dump, string_new("./loc.dump"), date);
+  if (err != E_OK) {
+    errmsg_prefix("dump_open: ");
+    goto cleanup;
+  }
+  err = dump_write_loc_table(&loc_dump, &name_collec, loc_vec.buf, loc_vec.len);
+  if (err != E_OK) {
+    errmsg_prefix("dump_write_loc_table: ");
+    goto cleanup;
+  }
+  err = dump_close(&loc_dump);
+  if (err != E_OK) {
+    errmsg_prefix("dump_close: ");
+    goto cleanup;
+  }
+
   res = E_OK;
 
 cleanup:
