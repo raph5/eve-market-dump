@@ -1,0 +1,7 @@
+-Ideps
+-Idata
+-Isrc
+-I/usr/local/include
+-std=c99
+-Wall
+-fsyntax-only
