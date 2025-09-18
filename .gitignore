@@ -1,6 +1,5 @@
 .DS_Store
 *.dSYM
-emd
 lib
 .cache
 *.dump
