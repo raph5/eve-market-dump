@@ -3,8 +3,11 @@
 #include "secrets.c"
 #include "csv.c"
 #include "esi.c"
+#include "regions.c"
 #include "systems.c"
 #include "locations.c"
+#include "orders.c"
+#include "histories.c"
 #include "server.c"
 #include "hoardling.c"
 
@@ -48,7 +51,9 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  hoardling_locations(NULL);
+  /* hoardling_locations(NULL); */
+  /* hoardling_orders(NULL); */
+  hoardling_histories(NULL);
 
   global_deinit();
   return 0;

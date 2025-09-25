@@ -2,12 +2,17 @@
 const uint8_t DUMP_VERSION       = 1;
 const char    DUMP_ASCII_ART[32] = "இ}ڿڰۣ-ڰۣ~—";
 
+const uint8_t DUMP_TYPE_LOCATIONS = 0;
+const uint8_t DUMP_TYPE_ORDERS    = 1;
+const uint8_t DUMP_TYPE_HISTORIES = 2;
+
 struct dump {
   FILE *file;
   uint32_t checksum;
 };
 
-err_t dump_open(struct dump *dump, struct string path, uint64_t date) {
+err_t dump_open(struct dump *dump, struct string path, uint8_t type,
+                uint64_t date) {
   assert(dump != NULL);
 
   const size_t PATH_LEN_MAX = 2048;
@@ -21,6 +26,14 @@ err_t dump_open(struct dump *dump, struct string path, uint64_t date) {
 
   // version
   err_t err = serialize_uint8(file, DUMP_VERSION);
+  if (err != E_OK) {
+    errmsg_prefix("serialize_uint8: ");
+    fclose(file);
+    return E_ERR;
+  }
+
+  // type
+  err = serialize_uint8(file, type);
   if (err != E_OK) {
     errmsg_prefix("serialize_uint8: ");
     fclose(file);
@@ -61,7 +74,7 @@ err_t dump_close(struct dump *dump) {
   assert(dump->file != NULL);
 
   // update checksum
-  int rv = fseek(dump->file, 1, SEEK_SET);
+  int rv = fseek(dump->file, 2, SEEK_SET);
   if (rv != 0) {
     errmsg_fmt("fseek: %s", strerror(errno));
     fclose(dump->file);
@@ -158,11 +171,15 @@ err_t dump_write_int64(struct dump *dump, int64_t n) {
 }
 
 err_t dump_write_float32(struct dump *dump, float x) {
-  return dump_write_uint32(dump, (uint32_t) x);
+  uint32_t n;
+  memcpy(&n, &x, 4);  // to pease c aliasing rules
+  return dump_write_uint32(dump, n);
 }
 
 err_t dump_write_float64(struct dump *dump, double x) {
-  return dump_write_uint64(dump, (uint64_t) x);
+  uint64_t n;
+  memcpy(&n, &x, 8);  // to pease c aliasing rules
+  return dump_write_uint64(dump, n);
 }
 
 err_t dump_write_string(struct dump *dump, struct string s) {

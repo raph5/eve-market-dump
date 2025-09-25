@@ -3,17 +3,12 @@ const err_t E_ESI_BASE = 1000;
 
 const struct string ESI_ROOT = STRING_NEW("https://esi.evetech.net/latest");
 const uint64_t      ESI_REQUEST_TIMEOUT = 7;
+const char         *ESI_DATE = "%Y-%m-%d";
+const char         *ESI_TIME = "%Y-%m-%dT%H:%M:%SZ";
+const char         *ESI_HEADER_TIME = "%a, %d %b %Y %H:%M:%S GMT";
 
+// NOTE: this handle is never cleaned up but its not a big deal
 __thread CURL *esi_curl_thread_handle = NULL;
-
-void esi_thread_init() {
-  esi_curl_thread_handle = curl_easy_init();
-  if (esi_curl_thread_handle == NULL) panic("curl_easy_init error");
-}
-
-void esi_thread_deinit() {
-  curl_easy_cleanup(esi_curl_thread_handle);
-}
 
 const size_t SSO_ACCESS_TOKEN_LEN_MAX = 4096;
 char         sso_access_token[SSO_ACCESS_TOKEN_LEN_MAX];
@@ -128,7 +123,7 @@ err_t sso_access_token_acquire(CURL *handle) {
   fclose(res_body_file);  // null terminates `res_body` buffer
   res_body_file = NULL;
 
-  // reponse code
+  // response code
   long res_code;
   rv = curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &res_code);
   if (rv != CURLE_OK) {
@@ -140,7 +135,7 @@ err_t sso_access_token_acquire(CURL *handle) {
     goto cleanup;
   }
 
-  // decode json repsonse
+  // decode json response
   json_error_t json_err;
   res_root = json_loads(res_body, 0, &json_err);
   if (res_root == NULL) {
@@ -300,7 +295,9 @@ const err_t E_ESI_ERR           = E_ESI_BASE + 1;  // esi returned an error
 
 struct esi_response {
   struct string body;
-  size_t pages;  // content of the X-Pages header
+  size_t pages;     // content of the X-Pages header
+  time_t expires;   // content expiry
+  time_t modified;  // content last modification date
 };
 
 void esi_response_destroy(struct esi_response *res) {
@@ -341,6 +338,13 @@ err_t esi_build_request(
   rv = curl_easy_setopt(handle, CURLOPT_URL, url);
   if (rv != CURLE_OK) {
     errmsg_fmt("CURLOPT_URL error: %s", curl_easy_strerror(rv));
+    return E_ERR;
+  }
+
+  // accept gzip
+  rv = curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING, "gzip");
+  if (rv != CURLE_OK) {
+    errmsg_fmt("CURLOPT_ACCEPT_ENCODING error: %s", curl_easy_strerror(rv));
     return E_ERR;
   }
 
@@ -390,12 +394,15 @@ err_t esi_build_request(
   return E_OK;
 }
 
-err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
+// response->pages, response->expires and response->modified are set to 0 if
+// the corresponding header is not present or can't be parsed
+err_t esi_perform_request(CURL *handle, struct esi_response *response,
                           int trails) {
   err_t err = E_ERR;
   CURLcode rv;
   CURLHcode hrv;
   FILE *body_file = NULL;
+  *response = (struct esi_response) {};
   // WARN: do not call return passed this line, set `err` and goto cleanup
 
   rv = curl_easy_setopt(handle, CURLOPT_TIMEOUT, ESI_REQUEST_TIMEOUT);
@@ -413,12 +420,12 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
     // reset body_file
     if (body_file != NULL) {
       fclose(body_file);
-      string_destroy(body);
+      string_destroy(&response->body);
       body_file = NULL;
     }
 
     // create body memstream
-    body_file = open_memstream(&body->buf, &body->len);
+    body_file = open_memstream(&response->body.buf, &response->body.len);
     if (body_file == NULL) {
       errmsg_fmt("open_memstream: %s", strerror(errno));
       goto cleanup;
@@ -501,7 +508,7 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
       }
 
       int timeout_secs;
-      err_t err = esi_parse_error_timeout(*body, &timeout_secs);
+      err_t err = esi_parse_error_timeout(response->body, &timeout_secs);
       if (err != E_OK) {
         struct string err = errmsg_get();
         log_warn("esi_fetch: can't decode esi timeout: %.*s", (int) err.len, err.buf);
@@ -524,11 +531,11 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
       }
 
       struct string message;
-      err_t err = esi_parse_error_message(*body, &message);
+      err_t err = esi_parse_error_message(response->body, &message);
       if (err == E_OK) {
         errmsg_fmt("esi error json: %.*s", (int) message.len, message.buf);
       } else {
-        errmsg_fmt("esi error: %.*s", (int) body->len, body->buf);
+        errmsg_fmt("esi error: %.*s", (int) response->body.len, response->body.buf);
       }
 
       string_destroy(&message);
@@ -536,21 +543,48 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
       goto cleanup;
     }
     
-    // parse X-Pages header
-    *pages = 0;
-    CURLHcode hrv;
-    struct curl_header *pages_header;
-    hrv = curl_easy_header(handle, "X-Pages", 0, CURLH_HEADER,
-                           -1, &pages_header);
-    if (hrv == CURLHE_OK && pages_header->value[0] != '\0') {
-      char *endptr;
-      long pages_long = strtol(pages_header->value, &endptr, 10);
-      if (*endptr != '\0') {  // if header value is not an valid long
-        log_warn("esi_fetch: X-Pages \"%s\" is not a valid int", pages_header->value);
-      } else if (pages_long < 0 || pages_long > 10000) {
-        log_warn("esi_fetch: X-Pages \"%s\" is out of range", pages_header->value);
-      } else {
-        *pages = pages_long;
+    // parse `x-pages` header
+    {
+      struct curl_header *pages_header;
+      CURLHcode hrv = curl_easy_header(handle, "X-Pages", 0, CURLH_HEADER, -1, &pages_header);
+      if (hrv == CURLHE_OK && pages_header->value[0] != '\0') {
+        char *endptr;
+        long pages_long = strtol(pages_header->value, &endptr, 10);
+        if (*endptr != '\0') {  // if header value is not an valid long
+          log_warn("esi_fetch: X-Pages \"%s\" is not a valid int", pages_header->value);
+          response->pages = 0;
+        } else if (pages_long < 0 || pages_long > 10000) {
+          log_warn("esi_fetch: X-Pages \"%s\" is out of range", pages_header->value);
+          response->pages = 0;
+        } else {
+          response->pages = pages_long;
+        }
+      }
+    }
+    
+    // parse `expires` header
+    {
+      struct curl_header *expires_header;
+      CURLHcode hrv = curl_easy_header(handle, "Expires", 0, CURLH_HEADER, -1, &expires_header);
+      if (hrv == CURLHE_OK && expires_header->value[0] != '\0') {
+        err = time_parse(ESI_HEADER_TIME, expires_header->value, &response->expires);
+        if (err != E_OK) {
+          log_warn("esi_fetch: X-Pages \"%s\" is not a valid date", expires_header->value);
+          response->expires = 0;
+        }
+      }
+    }
+
+    // parse `modified` header
+    {
+      struct curl_header *modified_header;
+      CURLHcode hrv = curl_easy_header(handle, "Expires", 0, CURLH_HEADER, -1, &modified_header);
+      if (hrv == CURLHE_OK && modified_header->value[0] != '\0') {
+        err = time_parse(ESI_HEADER_TIME, modified_header->value, &response->modified);
+        if (err != E_OK) {
+          log_warn("esi_fetch: X-Pages \"%s\" is not a valid date", modified_header->value);
+          response->modified = 0;
+        }
       }
     }
 
@@ -564,11 +598,13 @@ err_t esi_perform_request(CURL *handle, struct string *body, size_t *pages,
 
 cleanup:
   if (body_file != NULL) fclose(body_file);
-  if (err != E_OK) string_destroy(body);
+  if (err != E_OK) string_destroy(&response->body);
   return err;
 }
 
-// WARN: Yo then need to destroy the returned `esi_response`
+// response->pages, response->expires and response->modified are set to 0 if
+// the corresponding header is not present or can't be parsed
+// WARN: You then need to destroy the returned `esi_response`
 err_t esi_fetch(
   struct esi_response *response,
   struct string method,
@@ -583,16 +619,20 @@ err_t esi_fetch(
   assert(trails > 0);
 
   // Build the request upon the thread local handle
-  assert(esi_curl_thread_handle != NULL);
-  err_t err = esi_build_request(esi_curl_thread_handle, method, uri,
-                                body, authenticated);
+  if (esi_curl_thread_handle == NULL) {
+    esi_curl_thread_handle = curl_easy_init();
+    if (esi_curl_thread_handle == NULL) {
+      errmsg_fmt("curl_easy_init: damn");
+      return E_ERR;
+    }
+  }
+  err_t err = esi_build_request(esi_curl_thread_handle, method, uri, body, authenticated);
   if (err != E_OK) {
     errmsg_prefix("esi_build_request: ");
     return E_ERR;
   }
 
-  err = esi_perform_request(esi_curl_thread_handle, &response->body,
-                            &response->pages, trails);
+  err = esi_perform_request(esi_curl_thread_handle, response, trails);
   if (err != E_OK) {
     errmsg_prefix("esi_perform_request: ");
     return E_ERR;

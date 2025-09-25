@@ -2,70 +2,18 @@
 const err_t E_LOC_BASE = 3000;
 const err_t E_LOC_FOBIDDEN = E_LOC_BASE + 1;
 
-struct loc_name_collec {
-  struct dstring buf;
-  struct size_vec bound;
+// NOTE: returned locations name should be zeroed after use to avoid dangling
+// pointers
+struct loc {
+  uint64_t      id;
+  uint64_t      type_id;  // station type id
+  uint64_t      owner_id;  // station corporation id
+  uint64_t      system_id;
+  float         security;
+  struct string name;
 };
 
-err_t loc_name_collec_create(struct loc_name_collec *nc) {
-  assert(nc != NULL);
-  err_t err = dstring_create(&nc->buf, 1024);
-  if (err != E_OK) {
-    errmsg_prefix("dstring_create: ");
-    return E_ERR;
-  }
-  err = size_vec_create(&nc->bound, 64);
-  if (err != E_OK) {
-    errmsg_prefix("size_vec_create: ");
-    dstring_destroy(&nc->buf);
-    return E_ERR;
-  }
-  err = size_vec_push(&nc->bound, 0);
-  if (err != E_OK) panic("unreachable");
-  return E_OK;
-}
-
-void loc_name_collec_destroy(struct loc_name_collec *nc) {
-  assert(nc != NULL);
-  dstring_destroy(&nc->buf);
-  size_vec_destroy(&nc->bound);
-}
-
-err_t loc_name_collec_push(struct loc_name_collec *nc, struct string name,
-                           size_t *name_index) {
-  assert(nc != NULL);
-  assert(name_index != NULL);
-  err_t err = dstring_push(&nc->buf, name);
-  if (err != E_OK) {
-    errmsg_prefix("dstring_push: ");
-    return E_ERR;
-  }
-  size_t bound = nc->bound.buf[nc->bound.len - 1] + name.len;
-  err = size_vec_push(&nc->bound, bound);
-  if (err != E_OK) {
-    dstring_pop(&nc->buf, name.len);
-    errmsg_prefix("size_vec_push: ");
-    return E_ERR;
-  }
-  assert(nc->bound.len >= 2);
-  *name_index = nc->bound.len - 2;
-  return E_OK;
-}
-
-// WARN: the retirned string is valid UNTIL the next call to loc_name_collec_push
-struct string loc_name_collec_get(const struct loc_name_collec *nc,
-                                  size_t name_index) {
-  assert(nc != NULL);
-  if (name_index >= nc->bound.len - 1) {
-    panic("loc_name_collec_get: name_index out of bounds");
-  }
-  return (struct string) {
-    .buf = nc->buf.buf + nc->bound.buf[name_index],
-    .len = nc->bound.buf[name_index + 1] - nc->bound.buf[name_index]
-  };
-}
-
-struct loc_loc {
+struct _loc {
   uint64_t id;
   uint64_t type_id;  // station type id
   uint64_t owner_id;  // station corporation id
@@ -74,13 +22,85 @@ struct loc_loc {
   size_t   name_index;
 };
 
-IMPLEMENT_VEC(struct loc_loc, loc);
+IMPLEMENT_VEC(struct _loc, _loc);
 
-void loc_loc_print(const struct loc_loc *loc,
-                   const struct loc_name_collec *name_collec) {
+// NOTE: I think using a string_pool there was a bit overkill
+struct loc_collec {
+  struct string_pool sp;
+  struct _loc_vec    lv;
+};
+
+err_t loc_collec_create(struct loc_collec *collec) {
+  assert(collec != NULL);
+  err_t err = string_pool_create(&collec->sp, 2048);
+  if (err != E_OK) {
+    errmsg_prefix("string_pool_create: ");
+    return E_ERR;
+  }
+  err = _loc_vec_create(&collec->lv, 128);
+  if (err != E_OK) {
+    errmsg_prefix("_loc_vec: ");
+    string_pool_destroy(&collec->sp);
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+void loc_collec_destroy(struct loc_collec *collec) {
+  assert(collec != NULL);
+  string_pool_destroy(&collec->sp);
+  _loc_vec_destroy(&collec->lv);
+}
+
+err_t loc_collec_push(struct loc_collec *collec, struct loc *loc) {
+  assert(collec != NULL);
   assert(loc != NULL);
-  assert(name_collec != NULL);
-  struct string name = loc_name_collec_get(name_collec, loc->name_index);
+  size_t name_index;
+  err_t err = string_pool_push(&collec->sp, loc->name, &name_index);
+  if (err != E_OK) {
+    errmsg_prefix("string_pool_push: ");
+    return E_ERR;
+  }
+  struct _loc _loc = {
+    .id = loc->id,
+    .type_id = loc->type_id,
+    .owner_id = loc->owner_id,
+    .system_id = loc->system_id,
+    .security = loc->security,
+    .name_index = name_index,
+  };
+  err = _loc_vec_push(&collec->lv, _loc);
+  if (err != E_OK) {
+    errmsg_prefix("_loc_vec_push: ");
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+// WARN: the returned `struct loc` must be zeroed after use to avoid dangling
+// pointers
+struct loc loc_collec_get(struct loc_collec *collec, size_t i) {
+  assert(collec != NULL);
+  if (i >= collec->lv.len) {
+    panic("loc_collec_get index out of bounds");
+  }
+  return (struct loc) {
+    .id = collec->lv.buf[i].id,
+    .type_id = collec->lv.buf[i].type_id,
+    .owner_id = collec->lv.buf[i].owner_id,
+    .system_id = collec->lv.buf[i].system_id,
+    .security = collec->lv.buf[i].security,
+    .name = string_pool_get(&collec->sp, i),
+  };
+}
+
+size_t loc_collec_len(struct loc_collec *collec) {
+  assert(collec != NULL);
+  return collec->lv.len;
+}
+
+void loc_print(const struct loc *loc) {
+  assert(loc != NULL);
 
   printf("{\n"
          "\t.id = %llu\n"
@@ -95,7 +115,7 @@ void loc_loc_print(const struct loc_loc *loc,
          loc->owner_id,
          loc->system_id,
          loc->security,
-         (int) name.len, name.buf);
+         (int) loc->name.len, loc->name.buf);
 }
 
 err_t loc_csv_init(char *buf, size_t buf_len, struct csv_reader *rdr) {
@@ -131,10 +151,8 @@ read_error:
   return E_ERR;
 }
 
-// WARN: returned name is readonly
-// WARN: on return, loc->name_index is still undefined
-err_t loc_csv_read(struct csv_reader *rdr, struct loc_loc *loc,
-                   struct string *name) {
+// WARN: returned loc->name is readonly
+err_t loc_csv_read(struct csv_reader *rdr, struct loc *loc) {
   assert(loc != NULL);
   assert(rdr != NULL);
 
@@ -144,7 +162,7 @@ err_t loc_csv_read(struct csv_reader *rdr, struct loc_loc *loc,
   if (csv_read_intmax(rdr, &type_id) != E_OK) goto read_error;
   if (csv_read_intmax(rdr, &owner_id) != E_OK) goto read_error;
   if (csv_read_intmax(rdr, &system_id) != E_OK) goto read_error;
-  if (csv_read_string(rdr, name) != E_OK) goto read_error;
+  if (csv_read_string(rdr, &loc->name) != E_OK) goto read_error;
 
   if (id < 0 || type_id < 0 || owner_id < 0 || system_id < 0 ||
       id > UINT64_MAX || type_id > UINT64_MAX || owner_id > UINT64_MAX ||
@@ -204,10 +222,9 @@ bool loc_forbidden_locs_check(uint64_t id) {
   return false;
 }
 
-// WARN: this function does not set the `id` and `security` field of loc
-// WARN: name is read only
-err_t loc_parse_location_info(struct loc_loc *loc, struct string *name,
-                              struct string loc_data) {
+// this function does not set the `id` and `security` field of loc
+// WARN: upon successful retrun, name need to be free-ed
+err_t loc_parse_location_info(struct loc *loc, struct string loc_data) {
   err_t res = E_ERR;
   json_error_t json_err;
   json_t *root = json_loadb(loc_data.buf, loc_data.len, 0, &json_err);
@@ -230,7 +247,7 @@ err_t loc_parse_location_info(struct loc_loc *loc, struct string *name,
     errmsg_fmt("json error: owner_id is not an integer");
     goto cleanup;
   }
-  json_t *json_system_id = json_object_get(root, "system_id");
+  json_t *json_system_id = json_object_get(root, "solar_system_id");
   if (!json_is_integer(json_system_id)) {
     errmsg_fmt("json error: system_id is not an integer");
     goto cleanup;
@@ -258,11 +275,11 @@ err_t loc_parse_location_info(struct loc_loc *loc, struct string *name,
   }
 
   res = E_OK;
-  *name = string_new((char *) json_string_value(json_name));
-  *loc = (struct loc_loc) {
+  *loc = (struct loc) {
     .type_id = type_id,
     .owner_id = owner_id,
     .system_id = system_id,
+    .name = string_alloc_cpy(string_new((char *) json_string_value(json_name))),
   };
 
 cleanup:
@@ -270,19 +287,18 @@ cleanup:
   return res;
 }
 
-// TODO: test this function
-// WARN: name is read only
-err_t loc_fetch_location_info(struct loc_loc *loc, struct string *name,
-                              struct system_vec *sys_vec, uint64_t id) {
+// WARN: loc->name is read only
+err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
+                              uint64_t id) {
   assert(loc != NULL);
-  assert(name != NULL);
+  assert(sys_vec != NULL);
 
   if (loc_forbidden_locs_check(id)) {
     return E_LOC_FOBIDDEN;
   }
 
   err_t res = E_ERR;
-  struct esi_response response;
+  struct esi_response response = {};
 
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
@@ -297,17 +313,18 @@ err_t loc_fetch_location_info(struct loc_loc *loc, struct string *name,
       errmsg_prefix("loc_forbidden_locs_add: ");
       goto cleanup;
     }
+    goto cleanup;
   } else if (err != E_OK) {
     errmsg_prefix("esi_fetch: ");
     goto cleanup;
   }
 
-  err = loc_parse_location_info(loc, name, response.body);
+  err = loc_parse_location_info(loc, response.body);
   if (err != E_OK) {
     errmsg_prefix("loc_parse_location_info: ");
     goto cleanup;
   }
-  loc->security = system_get_security(sys_vec, id);
+  loc->security = system_vec_get_security(sys_vec, loc->system_id);
   loc->id = id;
   res = E_OK;
 
@@ -316,18 +333,14 @@ cleanup:
   return res;
 }
 
-err_t dump_write_loc(struct dump *dump, struct loc_name_collec *nc,
-                     struct loc_loc *loc) {
+err_t dump_write_loc(struct dump *dump, struct loc *loc) {
   assert(loc != NULL);
-  assert(nc != NULL);
-
   if (dump_write_uint64(dump, loc->id) != E_OK) goto error;
   if (dump_write_uint64(dump, loc->type_id) != E_OK) goto error;
   if (dump_write_uint64(dump, loc->owner_id) != E_OK) goto error;
   if (dump_write_uint64(dump, loc->system_id) != E_OK) goto error;
   if (dump_write_float32(dump, loc->security) != E_OK) goto error;
-  struct string name = loc_name_collec_get(nc, loc->name_index);
-  if (dump_write_string(dump, name) != E_OK) goto error;
+  if (dump_write_string(dump, loc->name) != E_OK) goto error;
   return E_OK;
 
 error:
@@ -335,19 +348,19 @@ error:
   return E_ERR;
 }
 
-err_t dump_write_loc_table(struct dump *dump, struct loc_name_collec *nc,
-                           struct loc_loc *loc, size_t loc_len) {
-  if (dump_write_uint64(dump, loc_len) != E_OK) {
+err_t dump_write_loc_collec(struct dump *dump, struct loc_collec *collec) {
+  size_t loc_count = loc_collec_len(collec);
+  if (dump_write_uint64(dump, loc_count) != E_OK) {
     errmsg_prefix("dump_write_uint64: ");
     return E_ERR;
   }
-
-  for (size_t i = 0; i < loc_len; ++i) {
-    if (dump_write_loc(dump, nc, loc + i) != E_OK) {
+  for (size_t i = 0; i < loc_count; ++i) {
+    struct loc loc = loc_collec_get(collec, i);
+    if (dump_write_loc(dump, &loc) != E_OK) {
       errmsg_prefix("dump_write_loc :");
       return E_ERR;
     }
+    loc = (struct loc) {};
   }
-
   return E_OK;
 }

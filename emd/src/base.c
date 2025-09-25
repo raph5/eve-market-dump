@@ -333,7 +333,7 @@ void dstring_destroy(struct dstring *ds) {
 
 err_t dstring_push(struct dstring *ds, struct string s) {
   assert(ds != NULL);
-  size_t new_cap = ds->cap;
+  size_t new_cap = ds->cap <= 0 ? 1 : ds->cap;
   while (new_cap < ds->len + s.len) {
     new_cap *= 2;
   }
@@ -441,6 +441,70 @@ IMPLEMENT_VEC(size_t, size);
 IMPLEMENT_VEC(uint64_t, uint64);
 
 /******************************************************************************
+ * string pool                                                                *
+ ******************************************************************************/
+struct string_pool {
+  struct dstring  dstr;
+  struct size_vec bounds;
+};
+
+err_t string_pool_create(struct string_pool *sp, size_t cap) {
+  assert(sp != NULL);
+  err_t err = dstring_create(&sp->dstr, cap);
+  if (err != E_OK) {
+    errmsg_prefix("dstring_create: ");
+    return E_ERR;
+  }
+  err = size_vec_create(&sp->bounds, 32);
+  if (err != E_OK) {
+    errmsg_prefix("size_vec_create: ");
+    dstring_destroy(&sp->dstr);
+    return E_ERR;
+  }
+  err = size_vec_push(&sp->bounds, 0);
+  if (err != E_OK) panic("unreachable");
+  return E_OK;
+}
+
+void string_pool_destroy(struct string_pool *sp) {
+  assert(sp != NULL);
+  dstring_destroy(&sp->dstr);
+  size_vec_destroy(&sp->bounds);
+}
+
+err_t string_pool_push(struct string_pool *sp, struct string s, size_t *s_idx) {
+  assert(sp != NULL);
+  assert(s_idx != NULL);
+  err_t err = dstring_push(&sp->dstr, s);
+  if (err != E_OK) {
+    errmsg_prefix("dstring_push: ");
+    return E_ERR;
+  }
+  size_t bound = sp->bounds.buf[sp->bounds.len - 1] + s.len;
+  err = size_vec_push(&sp->bounds, bound);
+  if (err != E_OK) {
+    dstring_pop(&sp->dstr, s.len);
+    errmsg_prefix("size_vec_push: ");
+    return E_ERR;
+  }
+  assert(sp->bounds.len >= 2);
+  *s_idx = sp->bounds.len - 2;
+  return E_OK;
+}
+
+// WARN: the returned string is valid UNTIL the next call to string_pool_push
+struct string string_pool_get(const struct string_pool *sp, size_t s_idx) {
+  assert(sp != NULL);
+  if (s_idx >= sp->bounds.len - 1) {
+    panic("string_pool_get: s_idx out of bounds");
+  }
+  return (struct string) {
+    .buf = sp->dstr.buf + sp->bounds.buf[s_idx],
+    .len = sp->bounds.buf[s_idx + 1] - sp->bounds.buf[s_idx]
+  };
+}
+
+/******************************************************************************
  * context                                                                    *
  ******************************************************************************/
 /*
@@ -537,6 +601,45 @@ void mutex_unlock(mutex_t *mu) {
 }
 
 /******************************************************************************
+ * time and date                                                              *
+ ******************************************************************************/
+err_t time_parse(const char *format, const char *str, time_t *time) {
+  assert(str != NULL);
+  assert(time != NULL);
+  assert(format != NULL);
+  struct tm tm;
+  char *endptr = strptime(str, format, &tm);
+  if (endptr == NULL || *endptr != '\0') {
+    errmsg_fmt("strptime: invalid date format");
+    return E_ERR;
+  }
+  *time = mktime(&tm);
+  if (*time == (time_t) -1) {
+    errmsg_fmt("mktime: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+// return iso 8601 ordinal date
+err_t date_parse(const char *format, const char *str, uint16_t *year,
+                 uint16_t *day) {
+  assert(format != NULL);
+  assert(str != NULL);
+  assert(year != NULL);
+  assert(day != NULL);
+  struct tm tm;
+  char *endptr = strptime(str, format, &tm);
+  if (endptr == NULL || *endptr != '\0') {
+    errmsg_fmt("strptime: invalid date format");
+    return E_ERR;
+  }
+  *year = tm.tm_year;
+  *day = tm.tm_yday;
+  return E_OK;
+}
+
+/******************************************************************************
  * serialization                                                              *
  ******************************************************************************/
 err_t serialize_uint8(FILE *stream, uint8_t n) {
@@ -600,11 +703,15 @@ err_t serialize_int64(FILE *stream, int64_t n) {
 }
 
 err_t serialize_float32(FILE *stream, float x) {
-  return serialize_uint32(stream, (uint32_t) x);
+  uint32_t n;
+  memcpy(&n, &x, 4);  // to pease c aliasing rules
+  return serialize_uint32(stream, n);
 }
 
 err_t serialize_float64(FILE *stream, double x) {
-  return serialize_uint64(stream, (uint64_t) x);
+  uint64_t n;
+  memcpy(&n, &x, 8);  // to pease c aliasing rules
+  return serialize_uint64(stream, n);
 }
 
 err_t serialize_string(FILE *stream, struct string s) {
