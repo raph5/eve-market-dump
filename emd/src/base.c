@@ -621,21 +621,32 @@ err_t time_parse(const char *format, const char *str, time_t *time) {
   return E_OK;
 }
 
+struct date {
+  uint16_t year;
+  uint16_t day;
+};
+
 // return iso 8601 ordinal date
-err_t date_parse(const char *format, const char *str, uint16_t *year,
-                 uint16_t *day) {
+err_t date_parse(const char *format, const char *str, struct date *date) {
   assert(format != NULL);
   assert(str != NULL);
-  assert(year != NULL);
-  assert(day != NULL);
+  assert(date != NULL);
   struct tm tm;
   char *endptr = strptime(str, format, &tm);
   if (endptr == NULL || *endptr != '\0') {
     errmsg_fmt("strptime: invalid date format");
     return E_ERR;
   }
-  *year = tm.tm_year;
-  *day = tm.tm_yday;
+  if (tm.tm_year < 0 || tm.tm_year > UINT16_MAX - 1900) {
+    errmsg_fmt("strptime: year %d out of range", tm.tm_year);
+    return E_ERR;
+  }
+  if (tm.tm_yday < 0 || tm.tm_yday > UINT16_MAX) {
+    errmsg_fmt("strptime: day %d out of range", tm.tm_yday);
+    return E_ERR;
+  }
+  date->year = tm.tm_year + 1900;
+  date->day = tm.tm_yday;
   return E_OK;
 }
 

@@ -2,7 +2,7 @@
 struct order {
   bool     is_buy_order;
   int8_t   range;
-  uint32_t  duration;
+  uint32_t duration;
   uint64_t issued;
   uint64_t min_volume;
   uint64_t volume_remain;
@@ -10,6 +10,7 @@ struct order {
   uint64_t location_id;
   uint64_t system_id;
   uint64_t type_id;
+  uint64_t region_id;
   uint64_t order_id;
   double   price;
 };
@@ -29,6 +30,7 @@ void order_print(struct order *order) {
          "\t.location_id = %llu\n"
          "\t.system_id = %llu\n"
          "\t.type_id = %llu\n"
+         "\t.region_id = %llu\n"
          "\t.order_id = %llu\n"
          "\t.price = %f\n"
          "}\n",
@@ -42,6 +44,7 @@ void order_print(struct order *order) {
          order->location_id,
          order->system_id,
          order->type_id,
+         order->region_id,
          order->order_id,
          order->price);
 }
@@ -65,7 +68,8 @@ err_t order_range_str_to_code(const char *str, int8_t *code) {
   return E_OK;
 }
 
-err_t order_parse_page(struct order_vec *order_vec, struct string raw) {
+err_t order_parse_page(struct order_vec *order_vec, struct string raw,
+                       uint64_t region_id) {
   err_t res = E_ERR;
   json_error_t json_err;
   json_t *root = json_loadb(raw.buf, raw.len, 0, &json_err); 
@@ -213,6 +217,7 @@ err_t order_parse_page(struct order_vec *order_vec, struct string raw) {
       .location_id = location_id,
       .system_id = system_id,
       .type_id = type_id,
+      .region_id = region_id,
       .order_id = order_id,
       .price = json_real_value(json_price),
     };
@@ -235,8 +240,8 @@ cleanup:
 // esi_fetch return a 0 page_count
 // same for expires and modified
 err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
-                       size_t page, size_t *page_count, time_t *expires,
-                       time_t *modified) {
+                          size_t page, size_t *page_count, time_t *expires,
+                          time_t *modified) {
   assert(order_vec != NULL);
   assert(page >= 1);
 
@@ -255,7 +260,7 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
     goto cleanup;
   }
 
-  err = order_parse_page(order_vec, response.body);
+  err = order_parse_page(order_vec, response.body, region_id);
   if (err != E_OK) {
     errmsg_prefix("order_parse_page: ");
     goto cleanup;
@@ -344,12 +349,13 @@ err_t dump_write_order(struct dump *dump, struct order *order) {
   if (dump_write_uint64(dump, order->location_id) != E_OK) goto error;
   if (dump_write_uint64(dump, order->system_id) != E_OK) goto error;
   if (dump_write_uint64(dump, order->type_id) != E_OK) goto error;
+  if (dump_write_uint64(dump, order->region_id) != E_OK) goto error;
   if (dump_write_uint64(dump, order->order_id) != E_OK) goto error;
   if (dump_write_float64(dump, order->price) != E_OK) goto error;
   return E_OK;
 
 error:
-  errmsg_prefix("dump_write_uint8/int8/uint64/float64");
+  errmsg_prefix("dump_write_uint8/int8/uint64/float64: ");
   return E_ERR;
 }
 

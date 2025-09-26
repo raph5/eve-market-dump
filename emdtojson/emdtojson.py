@@ -31,7 +31,7 @@ def unpack_order_table(file):
     order_table = []
     order_table_len, = unpack("!Q", file)
     for _ in range(order_table_len):
-        is_buy_order, _range, duration, issued, min_volume, volume_remain, volume_total, location_id, system_id, type_id, order_id, price = unpack("!BbIQQQQQQQQd", file)
+        is_buy_order, _range, duration, issued, min_volume, volume_remain, volume_total, location_id, system_id, type_id, region_id, order_id, price = unpack("!BbIQQQQQQQQQd", file)
         order_table.append({
             "is_buy_order": is_buy_order,
             "duration": duration,
@@ -43,6 +43,7 @@ def unpack_order_table(file):
             "location_id": location_id,
             "system_id": system_id,
             "type_id": type_id,
+            "region_id": region_id,
             "order_id": order_id,
             "price": price,
         })

@@ -140,14 +140,46 @@ cleanup:
 
 void *hoardling_histories(void *args) {
   err_t res = E_ERR;
-  struct history history = {};
-
-  err_t err = history_download(&history, 10000002, 45, NULL, NULL);
+  struct history_day_vec day_vec = {};
+  
+  err_t err = history_day_vec_create(&day_vec, 512);
   if (err != E_OK) {
-    errmsg_prefix("histroy_download: ");
+    errmsg_prefix("history_day_vec_create: ");
     goto cleanup;
   }
-  history_print(&history);
+
+  uint64_t ids[] = { 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610 };
+  size_t ids_count = sizeof(ids) / sizeof(*ids);
+
+  for (size_t i = 0; i < ids_count; ++i) {
+    struct history_market market = { .region_id = 10000002, .type_id = ids[i] };
+    log_print("download %llu", ids[i]);
+    err = history_download(&day_vec, market, NULL, NULL);
+    if (err != E_OK) {
+      errmsg_prefix("histroy_download: ");
+      goto cleanup;
+    }
+  }
+
+  history_day_print(day_vec.buf + day_vec.len - 1);
+
+  struct dump dump;
+  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL));
+  if (err != E_OK) {
+    errmsg_prefix("dump_open: ");
+    goto cleanup;
+  }
+  err = dump_write_history_day(&dump, day_vec.buf + day_vec.len - 1);
+  if (err != E_OK) {
+    errmsg_prefix("dump_write_order_table: ");
+    goto cleanup;
+  }
+  err = dump_close(&dump);
+  if (err != E_OK) {
+    errmsg_prefix("dump_close: ");
+    goto cleanup;
+  }
+
   res = E_OK;
 
 cleanup:
@@ -156,6 +188,6 @@ cleanup:
     errmsg_prefix("hoardling_histories: ");
     errmsg_print();
   }
-  history_destroy(&history);
+  history_day_vec_destroy(&day_vec);
   return NULL;
 }

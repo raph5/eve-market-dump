@@ -344,7 +344,7 @@ err_t dump_write_loc(struct dump *dump, struct loc *loc) {
   return E_OK;
 
 error:
-  errmsg_prefix("dump_write_uint64/float32/string");
+  errmsg_prefix("dump_write_uint64/float32/string: ");
   return E_ERR;
 }
 
