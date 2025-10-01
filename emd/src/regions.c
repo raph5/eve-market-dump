@@ -1,8 +1,7 @@
 
-/* size_t regions_len = 68; */
-size_t regions_len = 1;
-
 uint64_t regions[] = {
+  10000052  // TODO: remove that line
+
   /* 10000002, */
   /* 10000043, */
   /* 10000030, */
@@ -27,7 +26,7 @@ uint64_t regions[] = {
   /* 10000037, */
   /* 10000046, */
   /* 10000056, */
-  10000058,
+  /* 10000058, */
   /* 10000029, */
   /* 10000067, */
   /* 10000011, */
@@ -72,3 +71,5 @@ uint64_t regions[] = {
   /* 11000031, // thera */
   /* 19000001, // global plex market */
 };
+
+size_t regions_len = sizeof(regions) / sizeof(*regions);

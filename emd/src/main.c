@@ -52,8 +52,8 @@ int main(int argc, char *argv[]) {
   }
 
   /* hoardling_locations(NULL); */
-  /* hoardling_orders(NULL); */
-  hoardling_histories(NULL);
+  hoardling_orders(NULL);
+  /* hoardling_histories(NULL); */
 
   global_deinit();
   return 0;

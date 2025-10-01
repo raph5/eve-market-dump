@@ -49,18 +49,41 @@ def unpack_order_table(file):
         })
     return order_table
 
+def unpack_history_day(file):
+    stats = []
+    year, day, stats_len = unpack("!HHQ", file)
+    for _ in range (stats_len):
+        region_id, type_id, average, highest, lowest, order_count, volume = unpack("!QQdddQQ", file)
+        stats.append({
+            "region_id": region_id,
+            "type_id": type_id,
+            "average": average,
+            "highest": highest,
+            "lowest": lowest,
+            "order_count": order_count,
+            "volume": volume,
+        })
+    return { "year": year, "day": day, "stats": stats }
+
 dump_json = {}
 
-version, _type, checksum, date, ascii_art = unpack("!BBIQ32s", sys.stdin.buffer)
+version, _type, checksum, snapshot, expiration, ascii_art = unpack("!BBIQQ32s", sys.stdin.buffer)
 dump_json["version"] = version
 dump_json["type"] = _type
 dump_json["checksum"] = checksum
-dump_json["date"] = date
+dump_json["snapshot"] = snapshot
+dump_json["expiration"] = expiration 
 dump_json["ascii_art"] = ascii_art.decode("utf-8")
+
+# TODO: check checksum
 
 if _type == 0:  # locations
     dump_json["data"] = unpack_loc_table(sys.stdin.buffer)
 elif _type == 1:  # orders
     dump_json["data"] = unpack_order_table(sys.stdin.buffer)
+elif _type == 2:  # histories
+    dump_json["data"] = unpack_history_day(sys.stdin.buffer)
+else:
+    print("unknown dump type")
 
 json.dump(dump_json, sys.stdout)

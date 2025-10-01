@@ -238,12 +238,14 @@ cleanup:
 
 // page_count can be NULL. If it's not NULL, order_download_page will error in case 
 // esi_fetch return a 0 page_count
-// same for expires and modified
+// same for expiration and snapshot
 err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
-                          size_t page, size_t *page_count, time_t *expires,
-                          time_t *modified) {
+                          size_t page, size_t *page_count, time_t *expiration,
+                          time_t *snapshot) {
   assert(order_vec != NULL);
   assert(page >= 1);
+
+  log_print("order_download region %llu page %zu", region_id, page);
 
   err_t res = E_ERR;
   struct esi_response response = {};
@@ -270,17 +272,17 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
     errmsg_fmt("page_count is null, that likely mean esi_fetch could not get page_count");
     goto cleanup;
   }
-  if (expires != NULL && response.expires == 0) {
-    errmsg_fmt("expires is null, that likely mean esi_fetch could not get expires");
+  if (expiration != NULL && response.expires == 0) {
+    errmsg_fmt("expires is 0, that likely mean esi_fetch could not get expires");
     goto cleanup;
   }
-  if (modified != NULL && response.modified == 0) {
+  if (snapshot != NULL && response.modified == 0) {
     errmsg_fmt("modified is null, that likely mean esi_fetch could not get modified");
     goto cleanup;
   }
   if (page_count != NULL) *page_count = response.pages;
-  if (expires != NULL) *expires = response.expires;
-  if (modified != NULL) *modified = response.modified;
+  if (expiration != NULL) *expiration = response.expires;
+  if (snapshot != NULL) *snapshot = response.modified;
   res = E_OK;
 
 cleanup:
@@ -289,47 +291,64 @@ cleanup:
 }
 
 // order_vec is empty on error
-err_t order_download_universe(struct order_vec *order_vec) {
+// out_expiration is the expiration date of the returned data
+// out_snapshot is the date of the last modification to the returned data
+// out_expiration and out_snapshot can be null
+err_t order_download_universe(struct order_vec *order_vec,
+                              time_t *out_snapshot, time_t *out_expiration) {
   err_t res = E_ERR;
+  time_t download_expiration = 0;
+  time_t download_snapshot = 0;
 
   for (size_t i = 0; i < regions_len; ++i) {
     uint64_t region_id = regions[i];
-    size_t download_page_count;
-    time_t download_expires;
-    time_t download_modified;
+    size_t region_page_count;
+    time_t expiration;
+    time_t snapshot;
 
-    err_t err = order_download_page(order_vec, region_id, 1, &download_page_count,
-                                    &download_expires, &download_modified);
+    err_t err = order_download_page(order_vec, region_id, 1, &region_page_count,
+                                    &expiration, &snapshot);
     if (err != E_OK) {
       errmsg_prefix("order_download_page: ");
       goto cleanup;
     }
 
-    for (size_t page = 2; page <= download_page_count; ++page) {
+    if (download_expiration == 0) download_expiration = expiration;
+    if (download_snapshot == 0) download_snapshot = snapshot;
+    if (snapshot != download_snapshot) {
+      log_warn("order_download: the date of last modification changed during the download, data integrity of the download may be slightly compromised");
+    }
+    if (expiration < download_expiration) {
+      download_expiration = expiration;
+    }
+
+    for (size_t page = 2; page <= region_page_count; ++page) {
       size_t page_count;
-      time_t expires;
-      time_t modified;
 
       err_t err = order_download_page(order_vec, region_id, page, &page_count,
-                                      &expires, &modified);
+                                      &expiration, &snapshot);
       if (err != E_OK) {
         errmsg_prefix("order_download_page: ");
         goto cleanup;
       }
 
-      if (modified != download_modified) {
+      if (snapshot != download_snapshot) {
         log_warn("order_download: the date of last modification changed during the download, data integrity of the download may be slightly compromised");
       }
-      if (page_count != download_page_count) {
+      if (page_count != region_page_count) {
         log_warn("order_download: page_count changed during the download");
-        download_page_count = page_count;
+        region_page_count = page_count;
       }
-      if (expires < download_expires) {
-        download_expires = expires;
+      if (expiration < download_expiration) {
+        download_expiration = expiration;
       }
     }
   }
 
+  assert(download_expiration != 0);
+  assert(download_snapshot != 0);
+  if (out_expiration != NULL) *out_expiration = download_expiration;
+  if (out_snapshot != NULL) *out_snapshot = download_snapshot;
   res = E_OK;
 
 cleanup:

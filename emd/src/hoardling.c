@@ -62,7 +62,7 @@ void *hoardling_locations(void *args) {
   }
 
   struct dump dump;
-  err = dump_open(&dump, string_new("loc.dump"), DUMP_TYPE_LOCATIONS, time(NULL));
+  err = dump_open(&dump, string_new("loc.dump"), DUMP_TYPE_LOCATIONS, time(NULL), time(NULL));
   if (err != E_OK) {
     errmsg_prefix("dump_open: ");
     goto cleanup;
@@ -94,6 +94,7 @@ cleanup:
 void *hoardling_orders(void *args) {
   err_t res = E_ERR;
   struct order_vec order_vec = {};
+  time_t hoardling_expiration = 0;
 
   err_t err = order_vec_create(&order_vec, 2048);
   if (err != E_OK) {
@@ -101,29 +102,44 @@ void *hoardling_orders(void *args) {
     goto cleanup;
   }
 
-  err = order_download_universe(&order_vec);
-  if (err != E_OK) {
-    errmsg_prefix("order_fetch_page: ");
-    goto cleanup;
-  }
+  while (true) {
+    if (time(NULL) < hoardling_expiration) {
+      sleep(hoardling_expiration - time(NULL));
+      continue;
+    }
+    order_vec.len = 0;
 
-  order_print(order_vec.buf);
+    time_t expiration;
+    time_t snapshot;
+    err = order_download_universe(&order_vec, &snapshot, &expiration);
+    if (err != E_OK) {
+      errmsg_prefix("order_fetch_page: ");
+      goto cleanup;
+    }
 
-  struct dump dump;
-  err = dump_open(&dump, string_new("order.dump"), DUMP_TYPE_ORDERS, time(NULL));
-  if (err != E_OK) {
-    errmsg_prefix("dump_open: ");
-    goto cleanup;
-  }
-  err = dump_write_order_table(&dump, order_vec.buf, order_vec.len);
-  if (err != E_OK) {
-    errmsg_prefix("dump_write_order_table: ");
-    goto cleanup;
-  }
-  err = dump_close(&dump);
-  if (err != E_OK) {
-    errmsg_prefix("dump_close: ");
-    goto cleanup;
+    // TODO: add a dump root param
+    const size_t DUMP_PATH_LEN_MAX = 128;
+    char dump_path_buf[DUMP_PATH_LEN_MAX];
+    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
+                                         "./orders-%llu.dump",
+                                         (uint64_t) snapshot);
+
+    struct dump dump;
+    err = dump_open(&dump, dump_path, DUMP_TYPE_ORDERS, snapshot, expiration);
+    if (err != E_OK) {
+      errmsg_prefix("dump_open: ");
+      goto cleanup;
+    }
+    err = dump_write_order_table(&dump, order_vec.buf, order_vec.len);
+    if (err != E_OK) {
+      errmsg_prefix("dump_write_order_table: ");
+      goto cleanup;
+    }
+    err = dump_close(&dump);
+    if (err != E_OK) {
+      errmsg_prefix("dump_close: ");
+      goto cleanup;
+    }
   }
 
   res = E_OK;
@@ -148,7 +164,7 @@ void *hoardling_histories(void *args) {
     goto cleanup;
   }
 
-  uint64_t ids[] = { 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610 };
+  uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
   size_t ids_count = sizeof(ids) / sizeof(*ids);
 
   for (size_t i = 0; i < ids_count; ++i) {
@@ -164,7 +180,7 @@ void *hoardling_histories(void *args) {
   history_day_print(day_vec.buf + day_vec.len - 1);
 
   struct dump dump;
-  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL));
+  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL), time(NULL));
   if (err != E_OK) {
     errmsg_prefix("dump_open: ");
     goto cleanup;
@@ -187,6 +203,9 @@ cleanup:
   if (res != E_OK) {
     errmsg_prefix("hoardling_histories: ");
     errmsg_print();
+  }
+  for (size_t i = 0; i < day_vec.len; ++i) {
+    history_day_destroy(day_vec.buf + i);
   }
   history_day_vec_destroy(&day_vec);
   return NULL;
