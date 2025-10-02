@@ -1,7 +1,7 @@
 all: build
 
 CC = clang
-CFLAGS = -std=c99 -Wall -Werror
+CFLAGS = -std=c99 -Wall -Werror -pedantic
 TARGET = emd
 SRC = src/main.c
 IDIR = -Isrc -Ideps -Idata

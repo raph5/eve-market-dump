@@ -10,10 +10,10 @@ const char         *ESI_HEADER_TIME = "%a, %d %b %Y %H:%M:%S GMT";
 // NOTE: this handle is never cleaned up but its not a big deal
 __thread CURL *esi_curl_thread_handle = NULL;
 
-const size_t SSO_ACCESS_TOKEN_LEN_MAX = 4096;
-char         sso_access_token[SSO_ACCESS_TOKEN_LEN_MAX];
-uint64_t     sso_access_token_expiry = 0;
-mutex_t      sso_access_token_mu = MUTEX_INIT;
+#define  SSO_ACCESS_TOKEN_LEN_MAX 4096
+char     sso_access_token[SSO_ACCESS_TOKEN_LEN_MAX];
+uint64_t sso_access_token_expiry = 0;
+mutex_t  sso_access_token_mu = MUTEX_INIT;
 
 // Will the curl handle passed as argument
 err_t sso_access_token_acquire(CURL *handle) {
@@ -216,7 +216,7 @@ void esi_timeout_set(uint64_t duration) {
   mutex_unlock(&esi_timeout_mu);
 }
 
-void esi_timeout_clear() {
+void esi_timeout_clear(void) {
   mutex_lock(&esi_timeout_mu, 5);
   uint64_t timeout = esi_timeout;
   mutex_unlock(&esi_timeout_mu);
@@ -402,7 +402,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
   CURLcode rv;
   CURLHcode hrv;
   FILE *body_file = NULL;
-  *response = (struct esi_response) {};
+  *response = (struct esi_response) {0};
   // WARN: do not call return passed this line, set `err` and goto cleanup
 
   rv = curl_easy_setopt(handle, CURLOPT_TIMEOUT, ESI_REQUEST_TIMEOUT);

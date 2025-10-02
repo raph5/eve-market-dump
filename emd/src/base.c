@@ -438,8 +438,8 @@ vec_type *vec_name##_vec_getp(const struct vec_name##_vec *da, size_t i) { \
   return da->buf + i; \
 }
 
-IMPLEMENT_VEC(size_t, size);
-IMPLEMENT_VEC(uint64_t, uint64);
+IMPLEMENT_VEC(size_t, size)
+IMPLEMENT_VEC(uint64_t, uint64)
 
 /******************************************************************************
  * string pool                                                                *

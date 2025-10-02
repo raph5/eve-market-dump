@@ -15,7 +15,7 @@ struct order {
   double   price;
 };
 
-IMPLEMENT_VEC(struct order, order);
+IMPLEMENT_VEC(struct order, order)
 
 void order_print(struct order *order) {
   assert(order != NULL);
@@ -248,14 +248,14 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
   log_print("order_download region %" PRIu64 " page %zu", region_id, page);
 
   err_t res = E_ERR;
-  struct esi_response response = {};
+  struct esi_response response = {0};
 
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX, 
                                  "/markets/%" PRIu64 "/orders?page=%zu",
                                  region_id, page);
-  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
+  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {0},
                         false, 5);
   if (err != E_OK) {
     errmsg_prefix("esi_fetch: ");

@@ -14,7 +14,7 @@ struct secret_table {
 struct secret_table *global_secret_table = NULL;
 mutex_t global_secret_table_mu = MUTEX_INIT;
 
-void secret_table_create() {
+void secret_table_create(void) {
   struct secret_table *st = malloc(sizeof(struct secret_table));
   if (st == NULL) {
     panic("Can't even malloc a small table!");
@@ -25,7 +25,7 @@ void secret_table_create() {
   mutex_unlock(&global_secret_table_mu);
 }
 
-void secret_table_destroy() {
+void secret_table_destroy(void) {
   mutex_lock(&global_secret_table_mu, 5);
   assert(global_secret_table != NULL);
   for (size_t i = 0; i < global_secret_table->count; ++i) {

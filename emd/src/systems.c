@@ -5,7 +5,7 @@ struct system {
   float security;
 };
 
-IMPLEMENT_VEC(struct system, system);
+IMPLEMENT_VEC(struct system, system)
 
 err_t system_vec_load(struct system_vec *system_vec) {
   assert(system_vec != NULL);

@@ -5,8 +5,8 @@
 
 void *hoardling_locations(void *args) {
   err_t res = E_ERR;
-  struct system_vec sys_vec = {};
-  struct loc_collec loc_collec = {};
+  struct system_vec sys_vec = {0};
+  struct loc_collec loc_collec = {0};
 
   err_t err = system_vec_load(&sys_vec);
   if (err != E_OK) {
@@ -41,7 +41,7 @@ void *hoardling_locations(void *args) {
       errmsg_prefix("loc_collec_push: ");
       goto cleanup;
     }
-    loc = (struct loc) {};
+    loc = (struct loc) {0};
   }
 
   /* {
@@ -52,13 +52,13 @@ void *hoardling_locations(void *args) {
       goto cleanup;
     }
     loc_collec_push(&loc_collec, &loc);
-    loc = (struct loc) {};
+    loc = (struct loc) {0};
   } */
 
   {
     struct loc loc = loc_collec_get(&loc_collec, loc_collec.lv.len - 1);
     loc_print(&loc);
-    loc = (struct loc) {};
+    loc = (struct loc) {0};
   }
 
   struct dump dump;
@@ -100,7 +100,7 @@ void *hoardling_orders(void *args_ptr) {
   struct hoardling_orders_args args = *(struct hoardling_orders_args *) args_ptr;
 
   err_t res = E_ERR;
-  struct order_vec order_vec = {};
+  struct order_vec order_vec = {0};
   time_t hoardling_expiration = 0;
 
   err_t err = order_vec_create(&order_vec, 2048);
@@ -170,7 +170,7 @@ cleanup:
 
 void *hoardling_histories(void *args) {
   err_t res = E_ERR;
-  struct history_day_vec day_vec = {};
+  struct history_day_vec day_vec = {0};
   
   err_t err = history_day_vec_create(&day_vec, 512);
   if (err != E_OK) {

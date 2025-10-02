@@ -22,7 +22,7 @@ struct _loc {
   size_t   name_index;
 };
 
-IMPLEMENT_VEC(struct _loc, _loc);
+IMPLEMENT_VEC(struct _loc, _loc)
 
 // NOTE: I think using a string_pool there was a bit overkill
 struct loc_collec {
@@ -298,13 +298,13 @@ err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
   }
 
   err_t res = E_ERR;
-  struct esi_response response = {};
+  struct esi_response response = {0};
 
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX,
                                  "/universe/structures/%" PRIu64, id);
-  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
+  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {0},
                         true, 1);
 
   if (err == E_ESI_ERR) {
@@ -360,7 +360,7 @@ err_t dump_write_loc_collec(struct dump *dump, struct loc_collec *collec) {
       errmsg_prefix("dump_write_loc :");
       return E_ERR;
     }
-    loc = (struct loc) {};
+    loc = (struct loc) {0};
   }
   return E_OK;
 }

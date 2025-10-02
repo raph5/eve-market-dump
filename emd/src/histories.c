@@ -12,8 +12,8 @@ struct history_stats {
   uint64_t volume;
 };
 
-IMPLEMENT_VEC(struct history_market, history_market);
-IMPLEMENT_VEC(struct history_stats, history_stats);
+IMPLEMENT_VEC(struct history_market, history_market)
+IMPLEMENT_VEC(struct history_stats, history_stats)
 
 struct history_day {
   struct date date;
@@ -21,7 +21,7 @@ struct history_day {
   struct history_stats_vec val;
 };
 
-IMPLEMENT_VEC(struct history_day, history_day);
+IMPLEMENT_VEC(struct history_day, history_day)
 
 void history_day_print(struct history_day *day) {
   assert(day != NULL);
@@ -72,7 +72,7 @@ void history_day_destroy(struct history_day *day) {
   assert(day->key.len == day->val.len);
   history_market_vec_destroy(&day->key);
   history_stats_vec_destroy(&day->val);
-  *day = (struct history_day) {};
+  *day = (struct history_day) {0};
 }
 
 struct history_stats *history_day_get(struct history_day *day, 
@@ -287,14 +287,14 @@ err_t history_download(struct history_day_vec *day_vec,
   assert(day_vec != NULL);
 
   err_t res = E_ERR;
-  struct esi_response response = {};
+  struct esi_response response = {0};
 
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX, 
                                  "/markets/%" PRIu64 "/history?type_id=%" PRIu64,
                                  market.region_id, market.type_id);
-  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
+  err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {0},
                         false, 5);
   if (err != E_OK) {
     errmsg_prefix("esi_fetch: ");
