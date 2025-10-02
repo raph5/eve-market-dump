@@ -154,6 +154,7 @@ void *hoardling_orders(void *args_ptr) {
     }
 
     log_print("order hoardling: up to date");
+    hoardling_expiration = expiration;
   }
 
   res = E_OK;
