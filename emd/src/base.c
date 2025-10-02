@@ -1,9 +1,12 @@
+#define _XOPEN_SOURCE 700
+#define _POSIX_C_SOURCE 200809L
+
 #include <stddef.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <strings.h>
+#include <string.h>
 #include <stdbool.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -15,8 +18,6 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <inttypes.h>
-
-// TODO: assert types length
 
 /******************************************************************************
  * 3rd party dependencies                                                     *
@@ -565,8 +566,8 @@ void *context_get_value(const struct context *ctx, struct string key) {
 /******************************************************************************
  * mutexs                                                                     *
  ******************************************************************************/
+#define MUTEX_INIT PTHREAD_MUTEX_INITIALIZER
 typedef pthread_mutex_t mutex_t;
-const mutex_t MUTEX_INIT = PTHREAD_ERRORCHECK_MUTEX_INITIALIZER;
 
 void mutex_lock(mutex_t *mu, uint64_t timeout_sec) {
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0

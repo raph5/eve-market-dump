@@ -27,21 +27,21 @@ void history_day_print(struct history_day *day) {
   assert(day != NULL);
   assert(day->key.len == day->val.len);
   printf("{\n"
-         "\t.year = %hu\n"
-         "\t.day = %hu\n"
+         "\t.year = %" PRIu16 "\n"
+         "\t.day = %" PRIu16 "\n"
          "\t.data = [\n",
          day->date.year, day->date.day);
   for (size_t i = 0; i < day->key.len; ++i) {
     struct history_market market = day->key.buf[i];
     struct history_stats stats = day->val.buf[i];
     printf("\t\t{\n"
-           "\t\t\t.market.region_id = %llu,\n"
-           "\t\t\t.market.type_id = %llu,\n"
+           "\t\t\t.market.region_id = %" PRIu64 ",\n"
+           "\t\t\t.market.type_id = %" PRIu64 ",\n"
            "\t\t\t.stats.average = %f,\n"
            "\t\t\t.stats.highest = %f,\n"
            "\t\t\t.stats.lowest = %f,\n"
-           "\t\t\t.stats.order_count = %llu,\n"
-           "\t\t\t.stats.volume = %llu,\n"
+           "\t\t\t.stats.order_count = %" PRIu64 ",\n"
+           "\t\t\t.stats.volume = %" PRIu64 ",\n"
            "\t\t}\n",
            market.region_id, market.type_id, stats.average, stats.highest,
            stats.lowest, stats.order_count, stats.volume);
@@ -292,7 +292,7 @@ err_t history_download(struct history_day_vec *day_vec,
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX, 
-                                 "/markets/%llu/history?type_id=%llu",
+                                 "/markets/%" PRIu64 "/history?type_id=%" PRIu64,
                                  market.region_id, market.type_id);
   err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
                         false, 5);

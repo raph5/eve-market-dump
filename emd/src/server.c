@@ -15,7 +15,7 @@ err_t server_tcp_init(in_port_t port, struct server *serv) {
   struct sockaddr_in addr = {
     .sin_family = AF_INET,
     .sin_port = htons(port),
-    .sin_addr = (struct in_addr) { .s_addr = htonl(INADDR_LOOPBACK) },
+    .sin_addr = (struct in_addr) { .s_addr = htonl(0x7f000001) },
   };
   int rv = bind(sock_fd, (struct sockaddr *) &addr, sizeof(addr));
   if (rv == -1) {

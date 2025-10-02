@@ -21,17 +21,17 @@ void order_print(struct order *order) {
   assert(order != NULL);
   printf("{\n"
          "\t.is_buy_order = %d\n"
-         "\t.range = %hhd\n"
-         "\t.duration = %u\n"
-         "\t.issued = %llu\n"
-         "\t.min_volume = %llu\n"
-         "\t.volume_remain = %llu\n"
-         "\t.volume_total = %llu\n"
-         "\t.location_id = %llu\n"
-         "\t.system_id = %llu\n"
-         "\t.type_id = %llu\n"
-         "\t.region_id = %llu\n"
-         "\t.order_id = %llu\n"
+         "\t.range = %" PRIu8 "\n"
+         "\t.duration = %" PRIu8 "\n"
+         "\t.issued = %" PRIu64 "\n"
+         "\t.min_volume = %" PRIu64 "\n"
+         "\t.volume_remain = %" PRIu64 "\n"
+         "\t.volume_total = %" PRIu64 "\n"
+         "\t.location_id = %" PRIu64 "\n"
+         "\t.system_id = %" PRIu64 "\n"
+         "\t.type_id = %" PRIu64 "\n"
+         "\t.region_id = %" PRIu64 "\n"
+         "\t.order_id = %" PRIu64 "\n"
          "\t.price = %f\n"
          "}\n",
          order->is_buy_order,
@@ -245,7 +245,7 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
   assert(order_vec != NULL);
   assert(page >= 1);
 
-  log_print("order_download region %llu page %zu", region_id, page);
+  log_print("order_download region %" PRIu64 " page %zu", region_id, page);
 
   err_t res = E_ERR;
   struct esi_response response = {};
@@ -253,8 +253,8 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX, 
-                                 "/markets/%llu/orders?page=%d", region_id,
-                                 page);
+                                 "/markets/%" PRIu64 "/orders?page=%zu",
+                                 region_id, page);
   err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
                         false, 5);
   if (err != E_OK) {

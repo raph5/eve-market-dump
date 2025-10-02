@@ -103,10 +103,10 @@ void loc_print(const struct loc *loc) {
   assert(loc != NULL);
 
   printf("{\n"
-         "\t.id = %llu\n"
-         "\t.type_id = %llu\n"
-         "\t.owner_id = %llu\n"
-         "\t.system_id = %llu\n"
+         "\t.id = %" PRIu64 "\n"
+         "\t.type_id = %" PRIu64 "\n"
+         "\t.owner_id = %" PRIu64 "\n"
+         "\t.system_id = %" PRIu64 "\n"
          "\t.security = %f\n"
          "\t.name = %.*s\n"
          "}\n",
@@ -303,7 +303,7 @@ err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
   const size_t URI_LEN_MAX = 2048;
   char uri_buf[URI_LEN_MAX];
   struct string uri = string_fmt(uri_buf, URI_LEN_MAX,
-                                 "/universe/structures/%llu", id);
+                                 "/universe/structures/%" PRIu64, id);
   err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {},
                         true, 1);
 
