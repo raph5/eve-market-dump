@@ -78,6 +78,11 @@ err_t global_init(void) {
     errmsg_fmt("curl_global_init: error %d", (int) rv);
     return E_ERR;
   }
+  err_t err = timezone_init("GMT");
+  if (err != E_OK) {
+    errmsg_prefix("timezone_init: ");
+    return E_ERR;
+  }
   secret_table_create();
   return E_OK;
 }

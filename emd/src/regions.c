@@ -1,6 +1,9 @@
 
 uint64_t regions[] = {
-  10000052  // TODO: remove that line
+  10000052,  // TODO: remove that line
+  10000053,  // TODO: remove that line
+  10000054,  // TODO: remove that line
+  10000055,  // TODO: remove that line
 
   /* 10000002, */
   /* 10000043, */

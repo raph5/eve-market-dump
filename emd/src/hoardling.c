@@ -131,7 +131,7 @@ void *hoardling_orders(void *args_ptr) {
     const size_t DUMP_PATH_LEN_MAX = 2048;
     char dump_path_buf[DUMP_PATH_LEN_MAX];
     struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
-                                         "%.*s/orders-%llu.dump",
+                                         "%.*s/orders-%" PRIu64 ".dump",
                                          (int) args.dump_dir.len,
                                          args.dump_dir.buf,
                                          (uint64_t) snapshot);
@@ -184,7 +184,7 @@ void *hoardling_histories(void *args) {
 
   for (size_t i = 0; i < ids_count; ++i) {
     struct history_market market = { .region_id = 10000002, .type_id = ids[i] };
-    log_print("download %llu", ids[i]);
+    log_print("download %" PRIu64, ids[i]);
     err = history_download(&day_vec, market, NULL, NULL);
     if (err != E_OK) {
       errmsg_prefix("histroy_download: ");

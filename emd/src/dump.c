@@ -11,6 +11,9 @@ struct dump {
   uint32_t checksum;
 };
 
+// NOTE: I should remove `snapshot` as most dumps are not a real snapshot from
+// the game state
+//
 // `snapshot` is the date at which the data was snapshotted from Tranquility
 // `expiration` is expiration date of said data
 err_t dump_open(struct dump *dump, struct string path, uint8_t type,

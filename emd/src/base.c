@@ -604,6 +604,16 @@ void mutex_unlock(mutex_t *mu) {
 /******************************************************************************
  * time and date                                                              *
  ******************************************************************************/
+err_t timezone_init(const char *tz) {
+  int rv = setenv("TZ", tz, 1);
+  if (rv != 0) {
+    errmsg_fmt("setenv: %s", strerror(errno));
+    return E_ERR;
+  }
+  tzset();
+  return E_OK;
+}
+
 err_t time_parse(const char *format, const char *str, time_t *time) {
   assert(str != NULL);
   assert(time != NULL);
