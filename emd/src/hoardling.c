@@ -91,7 +91,14 @@ cleanup:
   return NULL;
 }
 
-void *hoardling_orders(void *args) {
+struct hoardling_orders_args {
+  struct string dump_dir;
+};
+
+void *hoardling_orders(void *args_ptr) {
+  assert(args_ptr != NULL);
+  struct hoardling_orders_args args = *(struct hoardling_orders_args *) args_ptr;
+
   err_t res = E_ERR;
   struct order_vec order_vec = {};
   time_t hoardling_expiration = 0;
@@ -107,21 +114,26 @@ void *hoardling_orders(void *args) {
       sleep(hoardling_expiration - time(NULL));
       continue;
     }
+
+    log_print("order hoardling: downloading orders and locations");
     order_vec.len = 0;
 
     time_t expiration;
     time_t snapshot;
     err = order_download_universe(&order_vec, &snapshot, &expiration);
     if (err != E_OK) {
-      errmsg_prefix("order_fetch_page: ");
-      goto cleanup;
+      errmsg_prefix("order hoardling error: order_download_universe: ");
+      log_print("order hoardling: 2 minutes backoff");
+      sleep(2 * 60);
+      continue;
     }
 
-    // TODO: add a dump root param
-    const size_t DUMP_PATH_LEN_MAX = 128;
+    const size_t DUMP_PATH_LEN_MAX = 2048;
     char dump_path_buf[DUMP_PATH_LEN_MAX];
     struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
-                                         "./orders-%llu.dump",
+                                         "%.*s/orders-%llu.dump",
+                                         (int) args.dump_dir.len,
+                                         args.dump_dir.buf,
                                          (uint64_t) snapshot);
 
     struct dump dump;
@@ -140,14 +152,16 @@ void *hoardling_orders(void *args) {
       errmsg_prefix("dump_close: ");
       goto cleanup;
     }
+
+    log_print("order hoardling: up to date");
   }
 
   res = E_OK;
 
 cleanup:
-  log_warn("hoardling_orders quitting");
+  log_warn("hoardling orders quitting");
   if (res != E_OK) {
-    errmsg_prefix("hoardling_orders: ");
+    errmsg_prefix("hoardling orders error: ");
     errmsg_print();
   }
   order_vec_destroy(&order_vec);

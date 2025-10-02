@@ -11,6 +11,58 @@
 #include "server.c"
 #include "hoardling.c"
 
+// cli
+const char* MAN =
+"NAME\n"
+"\temd - Eve Market Dump\n"
+"\n"
+"SYNOPSIS\n"
+"\temd [options]\n"
+"\n"
+"OPTIONS\n"
+"\t--secrets STRING\n"
+"\t\tjson string containing the secrets in foramt {key: value} (default \"{}\")\n"
+"\t--dump_dir STRING\n"
+"\t\tthe directory in which dumps will be created (default \".\")\n";
+
+struct args {
+  struct string secrets;
+  struct string dump_dir;
+};
+
+err_t args_parse(int argc, char *argv[], struct args *args) {
+  *args = (struct args) {
+    .secrets = string_new("{}"),
+    .dump_dir = string_new("."),
+  };
+
+  struct option opt_table[] = {
+    { .name = "secrets", .has_arg = required_argument },
+    { .name = "dump_dir", .has_arg = required_argument },
+  };
+
+  int rv, opt_index = -1;
+  while ((rv = getopt_long(argc, argv, "", opt_table, &opt_index)) == 0) {
+    switch (opt_index) {
+      case 0:
+        args->secrets = string_new(optarg);
+        break;
+      case 1:
+        args->dump_dir = string_new(optarg);
+        break;
+      default:
+        panic("unreachable");
+    }
+  }
+
+  if (optind < argc) {
+    printf("Unrecognized or malformed options\n\n%s", MAN);
+    return E_ERR;
+  }
+
+  return E_OK;
+}
+
 // by opposition with thread_init
 err_t global_init(void) {
   CURLcode rv = curl_global_init(CURL_GLOBAL_ALL);
@@ -51,9 +103,10 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  /* hoardling_locations(NULL); */
-  hoardling_orders(NULL);
-  /* hoardling_histories(NULL); */
+  struct hoardling_orders_args hoardling_orders_args = {
+    .dump_dir = args.dump_dir,
+  };
+  hoardling_orders(&hoardling_orders_args);
 
   global_deinit();
   return 0;
