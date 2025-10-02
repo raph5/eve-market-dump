@@ -39,10 +39,19 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   struct option opt_table[] = {
     { .name = "secrets", .has_arg = required_argument },
     { .name = "dump_dir", .has_arg = required_argument },
+    { 0 },  // shit api
   };
 
-  int rv, opt_index = -1;
-  while ((rv = getopt_long(argc, argv, "", opt_table, &opt_index)) == 0) {
+  while (true) {
+    int opt_index;
+    int rv = getopt_long(argc, argv, "", opt_table, &opt_index);
+    if (rv == -1) {
+      break;
+    } else if (rv != 0) {
+      printf("Unrecognized or malformed options\n\n%s", MAN);
+      return E_ERR;
+    }
+
     switch (opt_index) {
       case 0:
         args->secrets = string_new(optarg);
@@ -59,7 +68,6 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
     printf("Unrecognized or malformed options\n\n%s", MAN);
     return E_ERR;
   }
-
   return E_OK;
 }
 
