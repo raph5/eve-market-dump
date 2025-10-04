@@ -110,8 +110,9 @@ void *hoardling_orders(void *args_ptr) {
   }
 
   while (true) {
-    if (time(NULL) < hoardling_expiration) {
-      sleep(hoardling_expiration - time(NULL));
+    time_t now = time(NULL);
+    if (now < hoardling_expiration) {
+      sleep(hoardling_expiration - now);
       continue;
     }
 

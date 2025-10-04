@@ -95,7 +95,7 @@ void _assert(bool test, int line, char *file) {
  ******************************************************************************/
 void log_print(char *fmt, ...) {
   time_t t;
-  struct tm tm;
+  struct tm tm = {0};
   time(&t);
   localtime_r(&t, &tm);
   fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d ", 1900 + tm.tm_year,
@@ -111,7 +111,7 @@ void log_print(char *fmt, ...) {
 
 void log_warn(char *fmt, ...) {
   time_t t;
-  struct tm tm;
+  struct tm tm = {0};
   time(&t);
   localtime_r(&t, &tm);
   fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;33mwarn:\x1b[0m ",
@@ -128,7 +128,7 @@ void log_warn(char *fmt, ...) {
 
 void log_error(char *fmt, ...) {
   time_t t;
-  struct tm tm;
+  struct tm tm = {0};
   time(&t);
   localtime_r(&t, &tm);
   fprintf(stdout, "%04d/%02d/%02d %02d:%02d:%02d \x1b[1;31merror:\x1b[0m ",
@@ -604,7 +604,7 @@ void mutex_unlock(mutex_t *mu) {
 /******************************************************************************
  * time and date                                                              *
  ******************************************************************************/
-err_t timezone_init(const char *tz) {
+err_t timezone_set(const char *tz) {
   int rv = setenv("TZ", tz, 1);
   if (rv != 0) {
     errmsg_fmt("setenv: %s", strerror(errno));
@@ -618,7 +618,7 @@ err_t time_parse(const char *format, const char *str, time_t *time) {
   assert(str != NULL);
   assert(time != NULL);
   assert(format != NULL);
-  struct tm tm;
+  struct tm tm = {0};
   char *endptr = strptime(str, format, &tm);
   if (endptr == NULL || *endptr != '\0') {
     errmsg_fmt("strptime: invalid date format");
@@ -642,7 +642,7 @@ err_t date_parse(const char *format, const char *str, struct date *date) {
   assert(format != NULL);
   assert(str != NULL);
   assert(date != NULL);
-  struct tm tm;
+  struct tm tm = {0};
   char *endptr = strptime(str, format, &tm);
   if (endptr == NULL || *endptr != '\0') {
     errmsg_fmt("strptime: invalid date format");
