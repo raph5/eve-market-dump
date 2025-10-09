@@ -39,7 +39,7 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   struct option opt_table[] = {
     { .name = "secrets", .has_arg = required_argument },
     { .name = "dump_dir", .has_arg = required_argument },
-    { 0 },  // shit api
+    { 0 },  // shitty api
   };
 
   while (true) {

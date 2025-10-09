@@ -11,13 +11,9 @@ struct dump {
   uint32_t checksum;
 };
 
-// NOTE: I should remove `snapshot` as most dumps are not a real snapshot from
-// the game state
-//
-// `snapshot` is the date at which the data was snapshotted from Tranquility
 // `expiration` is expiration date of said data
 err_t dump_open(struct dump *dump, struct string path, uint8_t type,
-                time_t snapshot, time_t expiration) {
+                time_t expiration) {
   assert(dump != NULL);
 
   const size_t PATH_LEN_MAX = 2048;
@@ -49,14 +45,6 @@ err_t dump_open(struct dump *dump, struct string path, uint8_t type,
   err = serialize_uint32(file, 0);
   if (err != E_OK) {
     errmsg_prefix("serialize_uint32: ");
-    fclose(file);
-    return E_ERR;
-  }
-
-  // snapshot
-  err = serialize_uint64(file, (uint64_t) snapshot);
-  if (err != E_OK) {
-    errmsg_prefix("serialize_uint64: ");
     fclose(file);
     return E_ERR;
   }

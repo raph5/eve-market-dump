@@ -67,12 +67,11 @@ def unpack_history_day(file):
 
 dump_json = {}
 
-version, _type, checksum, snapshot, expiration, ascii_art = unpack("!BBIQQ32s", sys.stdin.buffer)
+version, _type, checksum, expiration, ascii_art = unpack("!BBIQ32s", sys.stdin.buffer)
 dump_json["version"] = version
 dump_json["type"] = _type
 dump_json["checksum"] = checksum
-dump_json["snapshot"] = snapshot
-dump_json["expiration"] = expiration 
+dump_json["expiration"] = expiration
 dump_json["ascii_art"] = ascii_art.decode("utf-8")
 
 # TODO: check checksum

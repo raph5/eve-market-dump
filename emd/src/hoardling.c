@@ -62,7 +62,7 @@ void *hoardling_locations(void *args) {
   }
 
   struct dump dump;
-  err = dump_open(&dump, string_new("loc.dump"), DUMP_TYPE_LOCATIONS, time(NULL), time(NULL));
+  err = dump_open(&dump, string_new("loc.dump"), DUMP_TYPE_LOCATIONS, time(NULL));
   if (err != E_OK) {
     errmsg_prefix("dump_open: ");
     goto cleanup;
@@ -101,7 +101,7 @@ void *hoardling_orders(void *args_ptr) {
 
   err_t res = E_ERR;
   struct order_vec order_vec = {0};
-  time_t hoardling_expiration = 0;
+  time_t expiration = 0;
 
   err_t err = order_vec_create(&order_vec, 2048);
   if (err != E_OK) {
@@ -111,17 +111,15 @@ void *hoardling_orders(void *args_ptr) {
 
   while (true) {
     time_t now = time(NULL);
-    if (now < hoardling_expiration) {
-      sleep(hoardling_expiration - now);
+    if (now < expiration) {
+      sleep(expiration - now);
       continue;
     }
 
     log_print("order hoardling: downloading orders and locations");
     order_vec.len = 0;
 
-    time_t expiration;
-    time_t snapshot;
-    err = order_download_universe(&order_vec, &snapshot, &expiration);
+    err = order_download_universe(&order_vec);
     if (err != E_OK) {
       errmsg_prefix("order hoardling error: order_download_universe: ");
       log_print("order hoardling: 2 minutes backoff");
@@ -134,11 +132,10 @@ void *hoardling_orders(void *args_ptr) {
     struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
                                          "%.*s/orders-%" PRIu64 ".dump",
                                          (int) args.dump_dir.len,
-                                         args.dump_dir.buf,
-                                         (uint64_t) snapshot);
+                                         args.dump_dir.buf, now);
 
     struct dump dump;
-    err = dump_open(&dump, dump_path, DUMP_TYPE_ORDERS, snapshot, expiration);
+    err = dump_open(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
     if (err != E_OK) {
       errmsg_prefix("dump_open: ");
       goto cleanup;
@@ -155,7 +152,7 @@ void *hoardling_orders(void *args_ptr) {
     }
 
     log_print("order hoardling: up to date");
-    hoardling_expiration = expiration;
+    expiration = now + 60 * 5;
   }
 
   res = E_OK;
@@ -196,7 +193,7 @@ void *hoardling_histories(void *args) {
   history_day_print(day_vec.buf + day_vec.len - 1);
 
   struct dump dump;
-  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL), time(NULL));
+  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL));
   if (err != E_OK) {
     errmsg_prefix("dump_open: ");
     goto cleanup;
