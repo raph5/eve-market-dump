@@ -18,6 +18,16 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <semaphore.h>
+
+/******************************************************************************
+ * prayers to the POSIX gods                                                  *
+ ******************************************************************************/
+
+// Oh mighty POSIX, guardian of threads and time,
+// Keeper of mutexes, semaphores, and signals divine,
+// Grant me clean compiles and deadlock-free nights.
+// Please POSIX, give me the pthread functions I humbly ask for. Amen.
 
 /******************************************************************************
  * 3rd party dependencies                                                     *
@@ -27,16 +37,16 @@
 #include <jansson.h>
 
 #if LIBCURL_VERSION_NUM != 0x080f00
-#warning "You are not building against curl version 8.15.0. May bob be with you"
+#error "You are not building against curl version 8.15.0. May bob be with you"
 #endif
 
 #if JANSSON_MAJOR_VERSION != 2 || JANSSON_MINOR_VERSION != 13 || \
     JANSSON_MICRO_VERSION != 1
-#warning "You are not building against jansson version 2.13.1. May bob be with you"
+#error "You are not building against jansson version 2.13.1. May bob be with you"
 #endif
 
 #if ZLIB_VERNUM != 0x1310
-#warning "You are not building against zlib version 1.3.1. May bob be with you"
+#error "You are not building against zlib version 1.3.1. May bob be with you"
 #endif
 
 /******************************************************************************
@@ -569,7 +579,7 @@ void *context_get_value(const struct context *ctx, struct string key) {
 #define MUTEX_INIT PTHREAD_MUTEX_INITIALIZER
 typedef pthread_mutex_t mutex_t;
 
-void mutex_lock(mutex_t *mu, uint64_t timeout_sec) {
+void mutex_lock(mutex_t *mu, time_t timeout_sec) {
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
   struct timespec timeout = {
     .tv_sec = timeout_sec,
@@ -599,6 +609,209 @@ void mutex_unlock(mutex_t *mu) {
     log_error("mutex_unlock failed: %s", strerror(errno));
     panic("o rage, o desespoir!");
   }
+}
+
+/******************************************************************************
+ * semaphore                                                                  *
+ ******************************************************************************/
+#define SEMAPHORE_UID_LEN 16
+void semaphore_get_uid(char out[SEMAPHORE_UID_LEN + 1]) {
+  memcpy(out, "/emd_", 5);
+  for (size_t i = 5; i < SEMAPHORE_UID_LEN; ++i) {
+    out[i] = 'a' + rand() % 26;
+  }
+  out[SEMAPHORE_UID_LEN] = '\0';
+}
+
+void semaphore_destroy(sem_t **sem_ptr) {
+  assert(sem_ptr != NULL);
+
+  if (*sem_ptr != NULL && *sem_ptr != SEM_FAILED) {
+    int rv = sem_close(*sem_ptr);
+    if (rv != 0) log_error("sem_close failed");
+  }
+  *sem_ptr = NULL;
+}
+
+// NOTE: in order to be compatible with MacOS I use sem_open instead of sem_init
+err_t semaphore_create(sem_t **sem_ptr, size_t value) {
+  assert(sem_ptr != NULL);
+  assert(value <= UINT_MAX);
+
+  char name[SEMAPHORE_UID_LEN + 1];
+  semaphore_get_uid(name);
+  sem_t *sem = sem_open(name, O_CREAT | O_EXCL, S_IRUSR | S_IWUSR, value);
+  if (sem == NULL || sem == SEM_FAILED) {
+    errmsg_fmt("sem_open: %s", strerror(errno));
+    semaphore_destroy(&sem);
+    return E_ERR;
+  }
+  int rv = sem_unlink(name);
+  if (rv != 0) {
+    errmsg_fmt("sem_unlink: %s", strerror(errno));
+    semaphore_destroy(&sem);
+    return E_ERR;
+  }
+  *sem_ptr = sem;
+  return E_OK;
+}
+
+/******************************************************************************
+ * FIFO                                                                       *
+ ******************************************************************************/
+
+// here unsafe mean not thread safe
+// unsafe_ptr_fifo can be zero initialized as soon as `cap` is set
+struct unsafe_ptr_fifo {
+  void **ptrs;  // ptrs == NULL means fifo as not been initialized yet
+  uint32_t cap;
+  uint32_t len;
+  uint32_t read_idx;
+  uint32_t write_idx;
+};
+
+void unsafe_ptr_fifo_init(struct unsafe_ptr_fifo *fifo, size_t cap) {
+  assert(fifo != NULL);
+  assert(cap < UINT32_MAX);
+  if (cap == 0 && fifo->cap == 0) {
+    panic("unsafe_ptr_fifo capacity can't be null");
+  }
+  if (cap == 0) {
+    cap = fifo->cap;
+  }
+  void **ptrs = calloc(cap, sizeof(void *));
+  if (ptrs == NULL) panic("calloc failed?");
+  fifo->ptrs = ptrs;
+  fifo->cap = cap;
+  fifo->len = 0;
+  fifo->read_idx = 0;
+  fifo->write_idx = 0;
+}
+
+void unsafe_ptr_fifo_destroy(struct unsafe_ptr_fifo *fifo) {
+  assert(fifo != NULL);
+  free(fifo->ptrs);
+  fifo->ptrs = NULL;
+}
+
+void unsafe_ptr_fifo_push(struct unsafe_ptr_fifo *fifo, void *ptr) {
+  if (fifo->ptrs == NULL) {
+    unsafe_ptr_fifo_init(fifo, 0);
+  }
+  if (fifo->len >= fifo->cap) {
+    panic("unsafe_ptr_fifo is full");
+  }
+  fifo->ptrs[fifo->write_idx] = ptr;
+  fifo->write_idx = (fifo->write_idx + 1) % fifo->cap;
+  fifo->len += 1;
+}
+
+void *unsafe_ptr_fifo_pop(struct unsafe_ptr_fifo *fifo) {
+  if (fifo->ptrs == NULL) {
+    unsafe_ptr_fifo_init(fifo, 0);
+  }
+  if (fifo->len == 0) {
+    panic("unsafe_ptr_fifo is empty");
+  }
+  uint32_t old_idx = fifo->read_idx;
+  fifo->read_idx = (fifo->read_idx + 1) % fifo->cap;
+  fifo->len -= 1;
+  return fifo->ptrs[old_idx];
+}
+
+// `struct ptr_fifo` can be zero initialized as soon as `cap` is set
+struct ptr_fifo {
+  mutex_t mu;
+  sem_t *pop;
+  sem_t *push;
+  char pop_name[SEMAPHORE_UID_LEN + 1];
+  char push_name[SEMAPHORE_UID_LEN + 1];
+  struct unsafe_ptr_fifo unsafe;
+};
+
+void ptr_fifo_destroy(struct ptr_fifo *fifo) {
+  assert(fifo != NULL);
+  semaphore_destroy(&fifo->push);
+  semaphore_destroy(&fifo->pop);
+  unsafe_ptr_fifo_destroy(&fifo->unsafe);
+}
+
+err_t ptr_fifo_init(struct ptr_fifo *fifo, size_t cap) {
+  assert(fifo != NULL);
+  assert(fifo->unsafe.ptrs == NULL);  // avoid double initialization
+  
+  err_t err = semaphore_create(&fifo->push, cap);
+  if (err != E_OK) {
+    errmsg_prefix("semaphore_create: ");
+    return E_ERR;
+  }
+  err = semaphore_create(&fifo->pop, 0);
+  if (err != E_OK) {
+    errmsg_prefix("semaphore_create: ");
+    return E_ERR;
+  }
+  unsafe_ptr_fifo_init(&fifo->unsafe, cap);
+  fifo->mu = (mutex_t) MUTEX_INIT;
+  return E_OK;
+}
+
+// ownership of buf is passed to fifo
+err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
+  assert(fifo != NULL);
+  assert(fifo->unsafe.ptrs != NULL);
+  assert(fifo->push != NULL && fifo->push != SEM_FAILED);
+  assert(fifo->pop != NULL && fifo->pop != SEM_FAILED);
+  assert(ptr != NULL);
+
+#if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
+  struct timespec timeout = {
+    .tv_sec = timeout_sec,
+    .tv_nsec = 0,
+  };
+  int rv = sem_timedwait(fifo->push, &timeout);
+#else
+  int rv = sem_wait(fifo->push);
+#endif
+  if (rv != 0) {
+    errmsg_fmt("sem_timedwait/wait: %s", strerror(errno));
+    return E_ERR;
+  }
+  mutex_lock(&fifo->mu, timeout_sec);
+
+  unsafe_ptr_fifo_push(&fifo->unsafe, ptr);
+
+  mutex_unlock(&fifo->mu);
+  rv = sem_post(fifo->pop);
+  if (rv != 0) panic("should not happen");
+  return E_OK;
+}
+
+err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
+  assert(fifo != NULL);
+  assert(fifo->unsafe.ptrs != NULL);
+  assert(ptr != NULL);
+
+#if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
+  struct timespec timeout = {
+    .tv_sec = timeout_sec,
+    .tv_nsec = 0,
+  };
+  int rv = sem_timedwait(fifo->pop, &timeout);
+#else
+  int rv = sem_wait(fifo->pop);
+#endif
+  if (rv != 0) {
+    errmsg_fmt("sem_timedwait/wait: %s", strerror(errno));
+    return E_ERR;
+  }
+  mutex_lock(&fifo->mu, timeout_sec);
+
+  *ptr = unsafe_ptr_fifo_pop(&fifo->unsafe);
+
+  mutex_unlock(&fifo->mu);
+  rv = sem_post(fifo->push);
+  if (rv != 0) panic("should not happen");
+  return E_OK;
 }
 
 /******************************************************************************

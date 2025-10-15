@@ -279,7 +279,9 @@ cleanup:
 }
 
 // order_vec is empty on error
-err_t order_download_universe(struct order_vec *order_vec) {
+// out_expiration is the expiration date of the returned data
+err_t order_download_universe(struct order_vec *order_vec, uint64_t regions[],
+                              size_t regions_len) {
   err_t res = E_ERR;
 
   for (size_t i = 0; i < regions_len; ++i) {

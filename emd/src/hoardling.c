@@ -3,7 +3,15 @@
 
 #include "stations.csv.h"
 
-void *hoardling_locations(void *args) {
+struct hoardling_locations_args {
+  struct string dump_dir;
+  struct ptr_fifo *chan_orders_to_locations;
+};
+
+void *hoardling_locations(void *args_ptr) {
+  assert(args_ptr != NULL);
+  /* struct hoardling_locations_args args = *(struct hoardling_locations_args *) args_ptr; */
+
   err_t res = E_ERR;
   struct system_vec sys_vec = {0};
   struct loc_collec loc_collec = {0};
@@ -44,7 +52,11 @@ void *hoardling_locations(void *args) {
     loc = (struct loc) {0};
   }
 
-  /* {
+  while (true) {
+    // TODO:
+  }
+
+  {
     struct loc loc;
     err = loc_fetch_location_info(&loc, &sys_vec, 1041052520530ULL);
     if (err != E_OK) {
@@ -53,7 +65,7 @@ void *hoardling_locations(void *args) {
     }
     loc_collec_push(&loc_collec, &loc);
     loc = (struct loc) {0};
-  } */
+  }
 
   {
     struct loc loc = loc_collec_get(&loc_collec, loc_collec.lv.len - 1);
@@ -93,6 +105,7 @@ cleanup:
 
 struct hoardling_orders_args {
   struct string dump_dir;
+  struct ptr_fifo *chan_orders_to_locations;
 };
 
 void *hoardling_orders(void *args_ptr) {
@@ -112,6 +125,7 @@ void *hoardling_orders(void *args_ptr) {
   while (true) {
     time_t now = time(NULL);
     if (now < expiration) {
+      log_print("order hoardling: up to date");
       sleep(expiration - now);
       continue;
     }
@@ -119,7 +133,7 @@ void *hoardling_orders(void *args_ptr) {
     log_print("order hoardling: downloading orders and locations");
     order_vec.len = 0;
 
-    err = order_download_universe(&order_vec);
+    err = order_download_universe(&order_vec, global_regions, global_regions_len);
     if (err != E_OK) {
       errmsg_prefix("order hoardling error: order_download_universe: ");
       log_print("order hoardling: 2 minutes backoff");
@@ -151,7 +165,6 @@ void *hoardling_orders(void *args_ptr) {
       goto cleanup;
     }
 
-    log_print("order hoardling: up to date");
     expiration = now + 60 * 5;
   }
 

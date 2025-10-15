@@ -84,6 +84,7 @@ err_t global_init(void) {
     return E_ERR;
   }
   secret_table_create();
+  srand(time(NULL));
   return E_OK;
 }
 
@@ -116,8 +117,23 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  struct ptr_fifo chan_orders_to_locations;
+  err = ptr_fifo_init(&chan_orders_to_locations, 32);
+  if (err != E_OK) {
+    errmsg_prefix("ptr_fifo_init: ");
+    errmsg_print();
+    return 1;
+  }
+
+  struct hoardling_locations_args hoardling_locations_args = {
+    .dump_dir = args.dump_dir,
+    .chan_orders_to_locations = &chan_orders_to_locations,
+  };
+  hoardling_locations(&hoardling_locations_args);
+
   struct hoardling_orders_args hoardling_orders_args = {
     .dump_dir = args.dump_dir,
+    .chan_orders_to_locations = &chan_orders_to_locations,
   };
   hoardling_orders(&hoardling_orders_args);
 

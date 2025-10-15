@@ -1,5 +1,5 @@
 
-uint64_t regions[] = {
+uint64_t global_regions[] = {
   10000052,  // TODO: remove that line
   10000053,  // TODO: remove that line
   10000054,  // TODO: remove that line
@@ -75,4 +75,4 @@ uint64_t regions[] = {
   /* 19000001, // global plex market */
 };
 
-size_t regions_len = sizeof(regions) / sizeof(*regions);
+size_t global_regions_len = sizeof(global_regions) / sizeof(*global_regions);

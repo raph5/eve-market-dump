@@ -4,6 +4,7 @@ CC = clang
 CFLAGS = -std=c99 -Wall -Werror -pedantic
 TARGET = emd
 SRC = src/main.c
+TEST = src/test.c
 IDIR = -Isrc -Ideps -Idata
 LIBS = -lz -ljansson -lcurl -lpthread
 
@@ -15,6 +16,10 @@ dev: $(SRC) $(DEPS)
 
 sanitize: $(SRC) $(DEPS)
 	$(CC) $(FEATURES) -g -DFANCY_PANIC -fsanitize=address $(CFLAGS) $(LIBS) $(IDIR) $(DEPS) $(SRC) -o $(TARGET)
+
+test: $(TEST) $(DEPS)
+	$(CC) $(FEATURES) -g -DFANCY_PANIC -fsanitize=address $(CFLAGS) $(LIBS) $(IDIR) $(DEPS) $(TEST) -o $(TARGET)_test
+	./$(TARGET)_test
 
 clean:
 	rm $(TARGET)
