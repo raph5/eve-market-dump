@@ -291,7 +291,7 @@ cleanup:
   return err;
 }
 
-const err_t E_ESI_ERR           = E_ESI_BASE + 1;  // esi returned an error
+const err_t E_ESI_ERR = E_ESI_BASE + 1;  // esi returned an error
 
 struct esi_response {
   struct string body;
@@ -635,7 +635,7 @@ err_t esi_fetch(
   err = esi_perform_request(esi_curl_thread_handle, response, trails);
   if (err != E_OK) {
     errmsg_prefix("esi_perform_request: ");
-    return E_ERR;
+    return err;
   }
 
   return E_OK;

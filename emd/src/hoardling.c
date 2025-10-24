@@ -69,7 +69,7 @@ void *hoardling_locations(void *args_ptr) {
         err = loc_fetch_location_info(&loc, &sys_vec, locid);
         if (err != E_OK && err != E_LOC_FORBIDDEN) {
           errmsg_prefix("loc_fetch_location_info: ");
-          log_error("locations hoardling: unable to fetch " PRIu64 " location info", locid);
+          log_error("locations hoardling: unable to fetch %" PRIu64 " location info", locid);
           errmsg_print();
           continue;
         }
