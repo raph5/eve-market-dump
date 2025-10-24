@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  struct ptr_fifo chan_orders_to_locations;
+  struct ptr_fifo chan_orders_to_locations = {0};
   err = ptr_fifo_init(&chan_orders_to_locations, 32);
   if (err != E_OK) {
     errmsg_prefix("ptr_fifo_init: ");

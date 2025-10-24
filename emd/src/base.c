@@ -733,6 +733,8 @@ void ptr_fifo_destroy(struct ptr_fifo *fifo) {
   unsafe_ptr_fifo_destroy(&fifo->unsafe);
 }
 
+// WARN: fifo must be zeroed beforehand otherwise assert(fifo->unsafe.ptrs ==
+// NULL) will fail
 err_t ptr_fifo_init(struct ptr_fifo *fifo, size_t cap) {
   assert(fifo != NULL);
   assert(fifo->unsafe.ptrs == NULL);  // avoid double initialization
