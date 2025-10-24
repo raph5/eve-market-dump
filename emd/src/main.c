@@ -75,11 +75,16 @@ void handle_sigint_sigterm(int _) {
   exit(1);
 }
 
+void print_clean_exit(void) {
+  log_print("clean exit");
+}
+
 void global_deinit(void) {
   curl_global_cleanup();
 }
 
 err_t global_init(void) {
+  atexit(print_clean_exit);
   atexit(global_deinit);
   sigset_t sigset;
   sigemptyset(&sigset);
