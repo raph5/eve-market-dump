@@ -398,7 +398,7 @@ err_t esi_build_request(
 // the corresponding header is not present or can't be parsed
 err_t esi_perform_request(CURL *handle, struct esi_response *response,
                           int trails) {
-  err_t err = E_ERR;
+  err_t res = E_ERR;
   CURLcode rv;
   CURLHcode hrv;
   FILE *body_file = NULL;
@@ -539,7 +539,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
       }
 
       string_destroy(&message);
-      err = E_ESI_ERR;
+      res = E_ESI_ERR;
       goto cleanup;
     }
     
@@ -567,7 +567,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
       struct curl_header *expires_header;
       CURLHcode hrv = curl_easy_header(handle, "Expires", 0, CURLH_HEADER, -1, &expires_header);
       if (hrv == CURLHE_OK && expires_header->value[0] != '\0') {
-        err = time_parse(ESI_HEADER_TIME, expires_header->value, &response->expires);
+        err_t err = time_parse(ESI_HEADER_TIME, expires_header->value, &response->expires);
         if (err != E_OK) {
           log_warn("esi_fetch: X-Pages \"%s\" is not a valid date", expires_header->value);
           response->expires = 0;
@@ -580,7 +580,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
       struct curl_header *modified_header;
       CURLHcode hrv = curl_easy_header(handle, "Expires", 0, CURLH_HEADER, -1, &modified_header);
       if (hrv == CURLHE_OK && modified_header->value[0] != '\0') {
-        err = time_parse(ESI_HEADER_TIME, modified_header->value, &response->modified);
+        err_t err = time_parse(ESI_HEADER_TIME, modified_header->value, &response->modified);
         if (err != E_OK) {
           log_warn("esi_fetch: X-Pages \"%s\" is not a valid date", modified_header->value);
           response->modified = 0;
@@ -589,7 +589,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
     }
 
     assert(res_code == 200);
-    err = E_OK;
+    res = E_OK;
     goto cleanup;
   }
 
@@ -598,8 +598,8 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
 
 cleanup:
   if (body_file != NULL) fclose(body_file);
-  if (err != E_OK) string_destroy(&response->body);
-  return err;
+  if (res != E_OK) string_destroy(&response->body);
+  return res;
 }
 
 // response->pages, response->expires and response->modified are set to 0 if
