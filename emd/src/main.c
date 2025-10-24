@@ -137,6 +137,7 @@ int main(int argc, char *argv[]) {
   };
   hoardling_orders(&hoardling_orders_args);
 
+  ptr_fifo_destroy(&chan_orders_to_locations);
   global_deinit();
   return 0;
 }

@@ -317,6 +317,43 @@ cleanup:
   return res;
 }
 
+// NOTE: using a struct of array for order_vec would improve the performances here
+// WARN: locid_vec should not be initialized
+err_t order_create_location_id_vec(struct uint64_vec *locid_vec,
+                                   struct order_vec *order_vec) {
+  assert(locid_vec != NULL);
+  assert(order_vec != NULL);
+
+  // TODO: remove
+  time_t debug_start = time(NULL);
+
+  err_t err = uint64_vec_create(locid_vec, 2048);
+  if (err != E_OK) {
+    errmsg_prefix("uint64_vec_create: ");
+    return E_ERR;
+  }
+
+  for (size_t i = 0; i < order_vec->len; ++i) {
+    size_t j;
+    for (j = 0; j < locid_vec->len; ++j) {
+      if (locid_vec->buf[j] == order_vec->buf[i].location_id) break;
+    }
+    if (j >= locid_vec->len) {
+      err = uint64_vec_push(locid_vec, order_vec->buf[i].location_id);
+      if (err != E_OK) {
+        errmsg_prefix("uint64_vec_push: ");
+        return E_ERR;
+      }
+    }
+  }
+
+  // TODO: remove
+  time_t debug_end = time(NULL);
+  log_print("DEBUG: order_create_location_id_vec duration %d", debug_end - debug_start);
+
+  return E_OK;
+}
+
 err_t dump_write_order(struct dump *dump, struct order *order) {
   assert(order != NULL);
   if (dump_write_uint8(dump, order->is_buy_order) != E_OK) goto error;

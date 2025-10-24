@@ -10,7 +10,7 @@ struct hoardling_locations_args {
 
 void *hoardling_locations(void *args_ptr) {
   assert(args_ptr != NULL);
-  /* struct hoardling_locations_args args = *(struct hoardling_locations_args *) args_ptr; */
+  struct hoardling_locations_args args = *(struct hoardling_locations_args *) args_ptr;
 
   err_t res = E_ERR;
   struct system_vec sys_vec = {0};
@@ -53,41 +53,63 @@ void *hoardling_locations(void *args_ptr) {
   }
 
   while (true) {
-    // TODO:
-  }
-
-  {
-    struct loc loc;
-    err = loc_fetch_location_info(&loc, &sys_vec, 1041052520530ULL);
+    void *locid_vec_ptr;
+    err = ptr_fifo_pop(args.chan_orders_to_locations, &locid_vec_ptr, 0);
     if (err != E_OK) {
-      errmsg_prefix("loc_fetch_location_info: ");
+      errmsg_prefix("ptr_fifo_pop: ");
       goto cleanup;
     }
-    loc_collec_push(&loc_collec, &loc);
-    loc = (struct loc) {0};
-  }
+    assert(locid_vec_ptr != NULL);
+    struct uint64_vec *locid_vec = locid_vec_ptr;
 
-  {
-    struct loc loc = loc_collec_get(&loc_collec, loc_collec.lv.len - 1);
-    loc_print(&loc);
-    loc = (struct loc) {0};
-  }
+    bool new_loc_info = false;
+    for (size_t i = 0; i < locid_vec->len; ++i) {
+      uint64_t locid = locid_vec->buf[i];
+      if (!loc_collec_includes(&loc_collec, locid)) {
+        struct loc loc;
+        err = loc_fetch_location_info(&loc, &sys_vec, locid);
+        if (err != E_OK) {
+          errmsg_prefix("loc_fetch_location_info: ");
+          goto cleanup;
+        }
+        err = loc_collec_push(&loc_collec, &loc);
+        if (err != E_OK) {
+          errmsg_prefix("loc_collec_push: ");
+          goto cleanup;
+        }
+        loc = (struct loc) {0};
+        new_loc_info = true;
+      }
+    }
 
-  struct dump dump;
-  err = dump_open(&dump, string_new("loc.dump"), DUMP_TYPE_LOCATIONS, time(NULL));
-  if (err != E_OK) {
-    errmsg_prefix("dump_open: ");
-    goto cleanup;
-  }
-  err = dump_write_loc_collec(&dump, &loc_collec);
-  if (err != E_OK) {
-    errmsg_prefix("dump_write_loc_collec: ");
-    goto cleanup;
-  }
-  err = dump_close(&dump);
-  if (err != E_OK) {
-    errmsg_prefix("dump_close: ");
-    goto cleanup;
+    uint64_vec_destroy(locid_vec);
+
+    if (new_loc_info) {
+      time_t now = time(NULL);
+      const size_t DUMP_PATH_LEN_MAX = 2048;
+      char dump_path_buf[DUMP_PATH_LEN_MAX];
+      struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
+                                           "%.*s/loc-%" PRIu64 ".dump",
+                                           (int) args.dump_dir.len,
+                                           args.dump_dir.buf, now);
+
+      struct dump dump;
+      err = dump_open(&dump, dump_path, DUMP_TYPE_LOCATIONS, time(NULL));
+      if (err != E_OK) {
+        errmsg_prefix("dump_open: ");
+        goto cleanup;
+      }
+      err = dump_write_loc_collec(&dump, &loc_collec);
+      if (err != E_OK) {
+        errmsg_prefix("dump_write_loc_collec: ");
+        goto cleanup;
+      }
+      err = dump_close(&dump);
+      if (err != E_OK) {
+        errmsg_prefix("dump_close: ");
+        goto cleanup;
+      }
+    }
   }
 
   res = E_OK;
@@ -163,6 +185,22 @@ void *hoardling_orders(void *args_ptr) {
     if (err != E_OK) {
       errmsg_prefix("dump_close: ");
       goto cleanup;
+    }
+
+    struct uint64_vec locid_vec;
+    err = order_create_location_id_vec(&locid_vec, &order_vec);
+    if (err != E_OK) {
+      errmsg_prefix("order_create_location_id_vec: ");
+      errmsg_print();
+      uint64_vec_destroy(&locid_vec);
+    } else {
+      // on success, pass ownership of locid_vec to chan_orders_to_locations
+      err = ptr_fifo_push(args.chan_orders_to_locations, (void *) &locid_vec, 15);
+      if (err != E_OK) {
+        errmsg_prefix("ptr_fifo_push: ");
+        errmsg_print();
+        uint64_vec_destroy(&locid_vec);
+      }
     }
 
     expiration = now + 60 * 5;

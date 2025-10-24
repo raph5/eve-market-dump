@@ -756,6 +756,7 @@ err_t ptr_fifo_init(struct ptr_fifo *fifo, size_t cap) {
 }
 
 // ownership of buf is passed to fifo
+// if timeout_sec == 0, ptr_fifo_pop will not timeout
 err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
   assert(fifo != NULL);
   assert(fifo->unsafe.ptrs != NULL);
@@ -763,14 +764,19 @@ err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
   assert(fifo->pop != NULL && fifo->pop != SEM_FAILED);
   assert(ptr != NULL);
 
+  int rv;
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
-  struct timespec timeout = {
-    .tv_sec = timeout_sec,
-    .tv_nsec = 0,
-  };
-  int rv = sem_timedwait(fifo->push, &timeout);
+  if (timeout_sec == 0) {
+    rv = sem_wait(fifo->push);
+  } else {
+    struct timespec timeout = {
+      .tv_sec = timeout_sec,
+      .tv_nsec = 0,
+    };
+    rv = sem_timedwait(fifo->push, &timeout);
+  }
 #else
-  int rv = sem_wait(fifo->push);
+  rv = sem_wait(fifo->push);
 #endif
   if (rv != 0) {
     errmsg_fmt("sem_timedwait/wait: %s", strerror(errno));
@@ -786,19 +792,26 @@ err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
   return E_OK;
 }
 
+// ownership of buf is taken from fifo
+// if timeout_sec == 0, ptr_fifo_pop will not timeout
 err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
   assert(fifo != NULL);
   assert(fifo->unsafe.ptrs != NULL);
   assert(ptr != NULL);
 
+  int rv;
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
-  struct timespec timeout = {
-    .tv_sec = timeout_sec,
-    .tv_nsec = 0,
-  };
-  int rv = sem_timedwait(fifo->pop, &timeout);
+  if (timeout_sec == 0) {
+    rv = sem_wait(fifo->pop);
+  } else {
+    struct timespec timeout = {
+      .tv_sec = timeout_sec,
+      .tv_nsec = 0,
+    };
+    rv = sem_timedwait(fifo->pop, &timeout);
+  }
 #else
-  int rv = sem_wait(fifo->pop);
+  rv = sem_wait(fifo->pop);
 #endif
   if (rv != 0) {
     errmsg_fmt("sem_timedwait/wait: %s", strerror(errno));

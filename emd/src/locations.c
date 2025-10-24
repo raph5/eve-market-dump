@@ -99,6 +99,14 @@ size_t loc_collec_len(struct loc_collec *collec) {
   return collec->lv.len;
 }
 
+bool loc_collec_includes(struct loc_collec *collec, uint64_t locid) {
+  assert(collec != NULL);
+  for (size_t i = 0; i < collec->lv.len; ++i) {
+    if (collec->lv.buf[i].id == locid) return true;
+  }
+  return false;
+}
+
 void loc_print(const struct loc *loc) {
   assert(loc != NULL);
 
