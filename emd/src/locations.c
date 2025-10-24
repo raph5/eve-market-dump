@@ -1,6 +1,6 @@
 
 const err_t E_LOC_BASE = 3000;
-const err_t E_LOC_FOBIDDEN = E_LOC_BASE + 1;
+const err_t E_LOC_FORBIDDEN = E_LOC_BASE + 1;
 
 // NOTE: returned locations name should be zeroed after use to avoid dangling
 // pointers
@@ -302,7 +302,7 @@ err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
   assert(sys_vec != NULL);
 
   if (loc_forbidden_locs_check(id)) {
-    return E_LOC_FOBIDDEN;
+    return E_LOC_FORBIDDEN;
   }
 
   err_t res = E_ERR;
@@ -321,6 +321,7 @@ err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
       errmsg_prefix("loc_forbidden_locs_add: ");
       goto cleanup;
     }
+    res = E_LOC_FORBIDDEN;
     goto cleanup;
   } else if (err != E_OK) {
     errmsg_prefix("esi_fetch: ");

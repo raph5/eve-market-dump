@@ -67,7 +67,7 @@ void *hoardling_locations(void *args_ptr) {
       if (!loc_collec_includes(&loc_collec, locid)) {
         struct loc loc;
         err = loc_fetch_location_info(&loc, &sys_vec, locid);
-        if (err != E_OK && err != E_LOC_FOBIDDEN) {
+        if (err != E_OK && err != E_LOC_FORBIDDEN) {
           errmsg_prefix("loc_fetch_location_info: ");
           log_error("locations hoardling: unable to fetch " PRIu64 " location info", locid);
           errmsg_print();
