@@ -81,9 +81,11 @@ void global_deinit(void) {
 
 err_t global_init(void) {
   atexit(global_deinit);
+  sigset_t sigset;
+  sigemptyset(&sigset);
   struct sigaction action = {
     .sa_handler = handle_sigint_sigterm,
-    .sa_mask = 0,
+    .sa_mask = sigset,
     .sa_flags = 0,
   };
   int rv = sigaction(SIGINT, &action, NULL);
