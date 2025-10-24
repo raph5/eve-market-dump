@@ -11,6 +11,8 @@ struct dump {
   uint32_t checksum;
 };
 
+// TODO: create a system to delete opened dumps on SIGINT
+
 // `expiration` is expiration date of said data
 err_t dump_open(struct dump *dump, struct string path, uint8_t type,
                 time_t expiration) {

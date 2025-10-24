@@ -12,7 +12,6 @@ void *hoardling_locations(void *args_ptr) {
   assert(args_ptr != NULL);
   struct hoardling_locations_args args = *(struct hoardling_locations_args *) args_ptr;
 
-  err_t res = E_ERR;
   struct system_vec sys_vec = {0};
   struct loc_collec loc_collec = {0};
 
@@ -68,9 +67,11 @@ void *hoardling_locations(void *args_ptr) {
       if (!loc_collec_includes(&loc_collec, locid)) {
         struct loc loc;
         err = loc_fetch_location_info(&loc, &sys_vec, locid);
-        if (err != E_OK) {
+        if (err != E_OK && err != E_LOC_FOBIDDEN) {
           errmsg_prefix("loc_fetch_location_info: ");
-          goto cleanup;
+          log_error("locations hoardling: unable to fetch " PRIu64 " location info", locid);
+          errmsg_print();
+          continue;
         }
         err = loc_collec_push(&loc_collec, &loc);
         if (err != E_OK) {
@@ -97,31 +98,33 @@ void *hoardling_locations(void *args_ptr) {
       err = dump_open(&dump, dump_path, DUMP_TYPE_LOCATIONS, time(NULL));
       if (err != E_OK) {
         errmsg_prefix("dump_open: ");
-        goto cleanup;
+        log_error("locations hoardling: unable to emit location dump");
+        errmsg_print();
+        continue;
       }
       err = dump_write_loc_collec(&dump, &loc_collec);
       if (err != E_OK) {
         errmsg_prefix("dump_write_loc_collec: ");
-        goto cleanup;
+        log_error("locations hoardling: unable to emit location dump");
+        errmsg_print();
+        continue;
       }
       err = dump_close(&dump);
       if (err != E_OK) {
         errmsg_prefix("dump_close: ");
-        goto cleanup;
+        log_error("locations hoardling: unable to emit location dump");
+        errmsg_print();
+        continue;
       }
     }
   }
 
-  res = E_OK;
-
 cleanup:
-  log_warn("hoardling_locations quitting");
-  if (res != E_OK) {
-    errmsg_prefix("hoardling_locations: ");
-    errmsg_print();
-  }
-  system_vec_destroy(&sys_vec);
-  loc_collec_destroy(&loc_collec);
+  log_warn("locations hoardling quitting");
+  errmsg_prefix("hoardling_locations: ");
+  errmsg_print();
+
+  exit(1);
   return NULL;
 }
 
@@ -134,7 +137,6 @@ void *hoardling_orders(void *args_ptr) {
   assert(args_ptr != NULL);
   struct hoardling_orders_args args = *(struct hoardling_orders_args *) args_ptr;
 
-  err_t res = E_ERR;
   struct order_vec order_vec = {0};
   time_t expiration = 0;
 
@@ -147,18 +149,18 @@ void *hoardling_orders(void *args_ptr) {
   while (true) {
     time_t now = time(NULL);
     if (now < expiration) {
-      log_print("order hoardling: up to date");
+      log_print("orders hoardling: up to date");
       sleep(expiration - now);
       continue;
     }
 
-    log_print("order hoardling: downloading orders and locations");
+    log_print("orders hoardling: downloading orders and locations");
     order_vec.len = 0;
 
     err = order_download_universe(&order_vec, global_regions, global_regions_len);
     if (err != E_OK) {
       errmsg_prefix("order hoardling error: order_download_universe: ");
-      log_print("order hoardling: 2 minutes backoff");
+      log_print("orders hoardling: 2 minutes backoff");
       sleep(2 * 60);
       continue;
     }
@@ -174,17 +176,23 @@ void *hoardling_orders(void *args_ptr) {
     err = dump_open(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
     if (err != E_OK) {
       errmsg_prefix("dump_open: ");
-      goto cleanup;
+      log_error("orders hoardling: unable to emit order dump");
+      errmsg_print();
+      continue;
     }
     err = dump_write_order_table(&dump, order_vec.buf, order_vec.len);
     if (err != E_OK) {
       errmsg_prefix("dump_write_order_table: ");
-      goto cleanup;
+      log_error("orders hoardling: unable to emit order dump");
+      errmsg_print();
+      continue;
     }
     err = dump_close(&dump);
     if (err != E_OK) {
       errmsg_prefix("dump_close: ");
-      goto cleanup;
+      log_error("orders hoardling: unable to emit order dump");
+      errmsg_print();
+      continue;
     }
 
     struct uint64_vec locid_vec;
@@ -206,20 +214,16 @@ void *hoardling_orders(void *args_ptr) {
     expiration = now + 60 * 5;
   }
 
-  res = E_OK;
-
 cleanup:
-  log_warn("hoardling orders quitting");
-  if (res != E_OK) {
-    errmsg_prefix("hoardling orders error: ");
-    errmsg_print();
-  }
-  order_vec_destroy(&order_vec);
+  log_warn("orders hoardling quitting");
+  errmsg_prefix("hoardling_orders: ");
+  errmsg_print();
+
+  exit(1);
   return NULL;
 }
 
 void *hoardling_histories(void *args) {
-  err_t res = E_ERR;
   struct history_day_vec day_vec = {0};
   
   err_t err = history_day_vec_create(&day_vec, 512);
@@ -233,6 +237,7 @@ void *hoardling_histories(void *args) {
 
   for (size_t i = 0; i < ids_count; ++i) {
     struct history_market market = { .region_id = 10000002, .type_id = ids[i] };
+    // TODO: remove log
     log_print("download %" PRIu64, ids[i]);
     err = history_download(&day_vec, market, NULL, NULL);
     if (err != E_OK) {
@@ -260,17 +265,11 @@ void *hoardling_histories(void *args) {
     goto cleanup;
   }
 
-  res = E_OK;
-
 cleanup:
-  log_warn("hoardling_histories quitting");
-  if (res != E_OK) {
-    errmsg_prefix("hoardling_histories: ");
-    errmsg_print();
-  }
-  for (size_t i = 0; i < day_vec.len; ++i) {
-    history_day_destroy(day_vec.buf + i);
-  }
-  history_day_vec_destroy(&day_vec);
+  log_warn("histories hoardling quitting");
+  errmsg_prefix("hoardling_histories: ");
+  errmsg_print();
+
+  exit(1);
   return NULL;
 }

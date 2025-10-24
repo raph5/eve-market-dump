@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <semaphore.h>
 #include <fcntl.h>
+#include <signal.h>
 
 /******************************************************************************
  * prayers to the POSIX gods                                                  *
@@ -652,6 +653,20 @@ err_t semaphore_create(sem_t **sem_ptr, size_t value) {
   *sem_ptr = sem;
   return E_OK;
 }
+
+/******************************************************************************
+ * critical path                                                              *
+ ******************************************************************************/
+
+// a critical path is a sections of code that we don't want to be stopped by a
+// SIGINT or a SIGTERM
+
+/*
+err_t critical_path_setup() {
+  // TODO:
+  int rv = sigaction();
+}
+*/
 
 /******************************************************************************
  * FIFO                                                                       *

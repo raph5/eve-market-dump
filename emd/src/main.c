@@ -71,10 +71,34 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   return E_OK;
 }
 
-// by opposition with thread_init
+void handle_sigint_sigterm(int _) {
+  exit(1);
+}
+
+void global_deinit(void) {
+  curl_global_cleanup();
+}
+
 err_t global_init(void) {
-  CURLcode rv = curl_global_init(CURL_GLOBAL_ALL);
-  if (rv) {
+  atexit(global_deinit);
+  struct sigaction action = {
+    .sa_handler = handle_sigint_sigterm,
+    .sa_mask = 0,
+    .sa_flags = 0,
+  };
+  int rv = sigaction(SIGINT, &action, NULL);
+  if (rv != 0) {
+    errmsg_fmt("sigaction: %s", strerror(errno));
+    return E_ERR;
+  }
+  rv = sigaction(SIGTERM, &action, NULL);
+  if (rv != 0) {
+    errmsg_fmt("sigaction: %s", strerror(errno));
+    return E_ERR;
+  }
+
+  CURLcode crv = curl_global_init(CURL_GLOBAL_ALL);
+  if (crv != CURLE_OK) {
     errmsg_fmt("curl_global_init: error %d", (int) rv);
     return E_ERR;
   }
@@ -88,13 +112,7 @@ err_t global_init(void) {
   return E_OK;
 }
 
-// by opposition with thread_deinit
-// WARN: global_deinit is not called on SIGINT or SIGTERM
-void global_deinit(void) {
-  curl_global_cleanup();
-  secret_table_destroy();
-}
-
+// NOTE: the indended to exit the main function is to receive a SIGINT/SIGTERM
 int main(int argc, char *argv[]) {
   err_t err = global_init();
   if (err != E_OK) {
@@ -124,26 +142,32 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  pthread_attr_t attr;
+  int rv = pthread_attr_init(&attr);
+  if (rv != 0) {
+    errmsg_fmt("pthread_attr_init: %s", strerror(errno));
+    errmsg_print();
+    return 1;
+  }
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
   pthread_t hoardling_locations_thread;
   struct hoardling_locations_args hoardling_locations_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
-                 &hoardling_locations_args);
+  rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
+                      &hoardling_locations_args);
+  if (rv != 0) {
+    errmsg_fmt("pthread_create: %s", strerror(errno));
+    errmsg_print();
+    return 1;
+  }
 
-  pthread_t hoardling_orders_thread;
+  // main thread is used to run hoardling_orders
   struct hoardling_orders_args hoardling_orders_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
-                 &hoardling_orders_args);
-
-  pthread_join(hoardling_locations_thread, NULL);
-  pthread_join(hoardling_orders_thread, NULL);
-
-  ptr_fifo_destroy(&chan_orders_to_locations);
-  global_deinit();
-  return 0;
+  hoardling_orders(&hoardling_orders_args);
 }
