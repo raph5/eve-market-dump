@@ -89,8 +89,7 @@ err_t global_init(void) {
 }
 
 // by opposition with thread_deinit
-// TODO: make sure global_deinit is called at every way out of the program
-// possible
+// WARN: global_deinit is not called on SIGINT or SIGTERM
 void global_deinit(void) {
   curl_global_cleanup();
   secret_table_destroy();
@@ -125,17 +124,24 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  pthread_t hoardling_locations_thread;
   struct hoardling_locations_args hoardling_locations_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  hoardling_locations(&hoardling_locations_args);
+  pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
+                 &hoardling_locations_args);
 
+  pthread_t hoardling_orders_thread;
   struct hoardling_orders_args hoardling_orders_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  hoardling_orders(&hoardling_orders_args);
+  pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
+                 &hoardling_orders_args);
+
+  pthread_join(hoardling_locations_thread, NULL);
+  pthread_join(hoardling_orders_thread, NULL);
 
   ptr_fifo_destroy(&chan_orders_to_locations);
   global_deinit();

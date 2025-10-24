@@ -195,7 +195,7 @@ void *hoardling_orders(void *args_ptr) {
       uint64_vec_destroy(&locid_vec);
     } else {
       // on success, pass ownership of locid_vec to chan_orders_to_locations
-      err = ptr_fifo_push(args.chan_orders_to_locations, (void *) &locid_vec, 15);
+      err = ptr_fifo_push(args.chan_orders_to_locations, &locid_vec, 15);
       if (err != E_OK) {
         errmsg_prefix("ptr_fifo_push: ");
         errmsg_print();

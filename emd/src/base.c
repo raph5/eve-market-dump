@@ -66,8 +66,7 @@ void _panic(const char *msg, int line, char *file) {
   void *trace[4096];
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
-  // TODO: do, in fact, call cleanup
-  abort();
+  exit(1);
 }
 
 void _assert(bool test, int line, char *file) {
@@ -79,15 +78,13 @@ void _assert(bool test, int line, char *file) {
   void *trace[4096];
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
-  // TODO: do, in fact, call cleanup
-  abort();
+  exit(1);
 }
 #else
 void _panic(const char *msg, int line, char *file) {
   fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m file %s, line %d, %s\n", file, line,
           msg);
-  // TODO: do, in fact, call cleanup
-  abort();
+  exit(1);
 }
 
 void _assert(bool test, int line, char *file) {
@@ -95,8 +92,7 @@ void _assert(bool test, int line, char *file) {
 
   fprintf(stderr, "\x1b[1;35massertion failed:\x1b[0m file %s, line %d:\n",
           file, line);
-  // TODO: do, in fact, call cleanup
-  abort();
+  exit(1);
 }
 #endif
 
