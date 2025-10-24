@@ -19,6 +19,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <semaphore.h>
+#include <fcntl.h>
 
 /******************************************************************************
  * prayers to the POSIX gods                                                  *
