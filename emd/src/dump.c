@@ -191,10 +191,12 @@ err_t dump_write_string(struct dump *dump, struct string s) {
     errmsg_prefix("dump_write_uint64: ");
     return E_ERR;
   }
-  err = dump_write(dump, (unsigned char *) s.buf, s.len);
-  if (err != E_OK) {
-    errmsg_prefix("dump_write: ");
-    return E_ERR;
+  if (s.len > 0) {
+    err = dump_write(dump, (unsigned char *) s.buf, s.len);
+    if (err != E_OK) {
+      errmsg_prefix("dump_write: ");
+      return E_ERR;
+    }
   }
   return E_OK;
 }

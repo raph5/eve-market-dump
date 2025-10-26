@@ -366,7 +366,7 @@ err_t dump_write_loc_collec(struct dump *dump, struct loc_collec *collec) {
   for (size_t i = 0; i < loc_count; ++i) {
     struct loc loc = loc_collec_get(collec, i);
     if (dump_write_loc(dump, &loc) != E_OK) {
-      errmsg_prefix("dump_write_loc :");
+      errmsg_prefix("dump_write_loc: ");
       return E_ERR;
     }
     loc = (struct loc) {0};
