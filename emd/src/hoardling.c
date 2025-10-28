@@ -71,15 +71,15 @@ void *hoardling_locations(void *args_ptr) {
           errmsg_prefix("loc_fetch_location_info: ");
           log_error("locations hoardling: unable to fetch %" PRIu64 " location info", locid);
           errmsg_print();
-          continue;
-        }
-        err = loc_collec_push(&loc_collec, &loc);
-        if (err != E_OK) {
-          errmsg_prefix("loc_collec_push: ");
-          goto cleanup;
+        } else if (err == E_OK) {
+          new_loc_info = true;
+          err = loc_collec_push(&loc_collec, &loc);
+          if (err != E_OK) {
+            errmsg_prefix("loc_collec_push: ");
+            goto cleanup;
+          }
         }
         loc = (struct loc) {0};
-        new_loc_info = true;
       }
     }
 
