@@ -6,12 +6,78 @@ const uint8_t DUMP_TYPE_LOCATIONS = 0;
 const uint8_t DUMP_TYPE_ORDERS    = 1;
 const uint8_t DUMP_TYPE_HISTORIES = 2;
 
+struct dump_record_entry {
+  FILE *fp;
+  char *path;
+};
+
+#define DUMP_RECORD_CAP 16
+struct dump_record_entry global_dump_record[DUMP_RECORD_CAP];
+size_t                   global_dump_record_len = 0;
+mutex_t                  global_dump_record_mu = MUTEX_INIT;
+
+// entry.path string is copyed so its ownership doesn't change
+void dump_record_push(FILE *fp, struct string path) {
+  mutex_lock(&global_dump_record_mu, 3);
+  assert(global_dump_record_len < DUMP_RECORD_CAP);
+
+  char *path_cpy;
+  err_t err = string_alloc_null_terminated_cpy(&path_cpy, path);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_null_terminated_cpy: ");
+    errmsg_print();
+    panic("I don't want to handle this error");
+  }
+
+  global_dump_record[global_dump_record_len] = (struct dump_record_entry) {
+    .fp = fp,
+    .path = path_cpy,
+  };
+  global_dump_record_len += 1;
+  mutex_unlock(&global_dump_record_mu);
+}
+
+void dump_record_pop(FILE* fp) {
+  mutex_lock(&global_dump_record_mu, 3);
+  for (size_t i = 0; i < global_dump_record_len; ++i) {
+    if (global_dump_record[i].fp == fp) {
+      free(global_dump_record[i].path);
+      global_dump_record[global_dump_record_len - 1] = global_dump_record[i];
+      global_dump_record_len -= 1;
+      mutex_unlock(&global_dump_record_mu);
+      return;
+    }
+  }
+  mutex_unlock(&global_dump_record_mu);
+}
+
+// close and unlink (remove) every files that are still in the dump_record
+// any error will be printed to stdout
+void dump_record_brun(void) {
+  mutex_lock(&global_dump_record_mu, 3);
+  for (size_t i = 0; i < global_dump_record_len; ++i) {
+    FILE *fp = global_dump_record[i].fp;
+    char *path = global_dump_record[i].path;
+    log_warn("store was closed while writing to file %s, to avoid producing a corrupted dump this file will be removed", path);
+    size_t path_len = strlen(path);
+    int rv = fclose(fp);
+    if (rv != 0) {
+      log_error("failed to close file %.*s: %s", path_len, path, strerror(errno));
+    }
+    rv = unlink(path);
+    if (rv != 0) {
+      log_error("failed to unlink file %.*s: %s", path_len, path, strerror(errno));
+    }
+    free(path);
+  }
+  global_dump_record_len = 0;
+  mutex_unlock(&global_dump_record_mu);
+}
+
 struct dump {
   FILE *file;
   uint32_t checksum;
 };
-
-// TODO: create a system to delete opened dumps on SIGINT
 
 // `expiration` is expiration date of said data
 err_t dump_open(struct dump *dump, struct string path, uint8_t type,

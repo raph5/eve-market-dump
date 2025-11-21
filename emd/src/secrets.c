@@ -58,9 +58,26 @@ void secret_table_add(struct string key, struct string value) {
   mutex_lock(&global_secret_table_mu, 5);
   assert(global_secret_table != NULL);
   assert(global_secret_table->count < SECRET_COUNT_MAX);
+
+  err_t err;
+  struct string key_cpy;
+  err = string_alloc_cpy(&key_cpy, key);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_cpy: ");
+    errmsg_print();
+    panic("I don't want to handle this error");
+  }
+  struct string value_cpy;
+  err = string_alloc_cpy(&value_cpy, value);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_cpy: ");
+    errmsg_print();
+    panic("I don't want to handle this error");
+  }
+
   global_secret_table->t[global_secret_table->count++] = (struct secret) {
-    .key = string_alloc_cpy(key),
-    .value = string_alloc_cpy(value),
+    .key = key_cpy,
+    .value = value_cpy,
   };
   mutex_unlock(&global_secret_table_mu);
 }

@@ -264,7 +264,7 @@ cleanup:
 
 // WARN: Yo then need to free the string pointed to by message
 err_t esi_parse_error_message(struct string body, struct string *message) {
-  err_t err = E_ERR;
+  err_t res = E_ERR;
 
   json_error_t json_err;
   json_t *root = json_loadb(body.buf, body.len, 0, &json_err);
@@ -283,12 +283,17 @@ err_t esi_parse_error_message(struct string body, struct string *message) {
     goto cleanup;
   }
 
-  *message = string_alloc_cpy(string_new((char *) json_string_value(message_field)));
-  err = E_OK;
+  struct string message_unowned = string_new((char *) json_string_value(message_field));
+  err_t err = string_alloc_cpy(message, message_unowned);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_cpy: ");
+    goto cleanup;
+  }
+  res = E_OK;
 
 cleanup:
   json_decref(root);
-  return err;
+  return res;
 }
 
 const err_t E_ESI_ERR = E_ESI_BASE + 1;  // esi returned an error

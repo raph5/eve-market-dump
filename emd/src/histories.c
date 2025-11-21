@@ -122,7 +122,7 @@ struct history_day *history_day_vec_get_by_date(struct history_day_vec *vec,
 
 // market_vec should already be initialized
 err_t get_active_markets(struct history_market_vec *market_vec,
-                        struct order_vec *order_vec) {
+                         struct order_vec *order_vec) {
   assert(market_vec != NULL);
   assert(order_vec != NULL);
 

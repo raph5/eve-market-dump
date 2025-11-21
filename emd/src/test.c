@@ -23,6 +23,17 @@ void test_zeroed_vec(void) {
   size_vec_destroy(&vec);
 }
 
+void test_zeroed_vec_with_cap(void) {
+  struct size_vec vec = { .cap = 16 };
+  size_vec_push(&vec, 123);
+  assert(vec.len == 1);
+  assert(vec.cap == 16);
+  assert(vec.buf[0] == 123);
+  assert(size_vec_get(&vec, 0) == 123);
+  assert(*size_vec_getp(&vec, 0) == 123);
+  size_vec_destroy(&vec);
+}
+
 void test_order_download_page(void) {
   struct order_vec vec = {0};
   size_t page_count;
@@ -121,6 +132,8 @@ void test_ptr_fifo(void) {
   ptr_fifo_destroy(&fifo);
 }
 
+// TODO: test dump_record
+
 int main(void) {
   printf("---------- TEST START ----------\n");
 
@@ -128,9 +141,10 @@ int main(void) {
   test_unsafe_ptr_fifo();
   printf("---------- test_ptr_fifo ----------\n");
   test_ptr_fifo();
-  return 0;
   printf("---------- test_zeroed_vec ----------\n");
   test_zeroed_vec();
+  // TODO: remove
+  return 0;
 
   printf("---------- test_order_download_page ----------\n");
   test_order_download_page();

@@ -1,6 +1,10 @@
 
+#include "stations.csv.h"
+
 const err_t E_LOC_BASE = 3000;
 const err_t E_LOC_FORBIDDEN = E_LOC_BASE + 1;
+
+// TODO: don't use a string pool
 
 // NOTE: returned locations name should be zeroed after use to avoid dangling
 // pointers
@@ -13,96 +17,12 @@ struct loc {
   struct string name;
 };
 
-struct _loc {
-  uint64_t id;
-  uint64_t type_id;  // station type id
-  uint64_t owner_id;  // station corporation id
-  uint64_t system_id;
-  float    security;
-  size_t   name_index;
-};
+IMPLEMENT_VEC(struct loc, loc)
 
-IMPLEMENT_VEC(struct _loc, _loc)
-
-// NOTE: I think using a string_pool there was a bit overkill
-struct loc_collec {
-  struct string_pool sp;
-  struct _loc_vec    lv;
-};
-
-err_t loc_collec_create(struct loc_collec *collec) {
-  assert(collec != NULL);
-  err_t err = string_pool_create(&collec->sp, 2048);
-  if (err != E_OK) {
-    errmsg_prefix("string_pool_create: ");
-    return E_ERR;
-  }
-  err = _loc_vec_create(&collec->lv, 128);
-  if (err != E_OK) {
-    errmsg_prefix("_loc_vec: ");
-    string_pool_destroy(&collec->sp);
-    return E_ERR;
-  }
-  return E_OK;
-}
-
-void loc_collec_destroy(struct loc_collec *collec) {
-  assert(collec != NULL);
-  string_pool_destroy(&collec->sp);
-  _loc_vec_destroy(&collec->lv);
-}
-
-err_t loc_collec_push(struct loc_collec *collec, struct loc *loc) {
-  assert(collec != NULL);
-  assert(loc != NULL);
-  size_t name_index;
-  err_t err = string_pool_push(&collec->sp, loc->name, &name_index);
-  if (err != E_OK) {
-    errmsg_prefix("string_pool_push: ");
-    return E_ERR;
-  }
-  struct _loc _loc = {
-    .id = loc->id,
-    .type_id = loc->type_id,
-    .owner_id = loc->owner_id,
-    .system_id = loc->system_id,
-    .security = loc->security,
-    .name_index = name_index,
-  };
-  err = _loc_vec_push(&collec->lv, _loc);
-  if (err != E_OK) {
-    errmsg_prefix("_loc_vec_push: ");
-    return E_ERR;
-  }
-  return E_OK;
-}
-
-// WARN: the returned `struct loc` must be zeroed after use to avoid dangling
-// pointers
-struct loc loc_collec_get(struct loc_collec *collec, size_t i) {
-  assert(collec != NULL);
-  if (i >= collec->lv.len) {
-    panic("loc_collec_get index out of bounds");
-  }
-  return (struct loc) {
-    .id = collec->lv.buf[i].id,
-    .type_id = collec->lv.buf[i].type_id,
-    .owner_id = collec->lv.buf[i].owner_id,
-    .system_id = collec->lv.buf[i].system_id,
-    .security = collec->lv.buf[i].security,
-    .name = string_pool_get(&collec->sp, i),
-  };
-}
-
-size_t loc_collec_len(struct loc_collec *collec) {
-  assert(collec != NULL);
-  return collec->lv.len;
-}
-
-bool loc_collec_includes(struct loc_collec *collec, uint64_t locid) {
-  assert(collec != NULL);
-  for (size_t i = 0; i < collec->lv.len; ++i) {
-    if (collec->lv.buf[i].id == locid) return true;
+bool forbidden_locs_includes(struct uint64_vec *forbidden_locs, uint64_t loc_id) {
+  assert(forbidden_locs != NULL);
+  for (size_t i = 0; i < forbidden_locs->len; ++i) {
+    if (forbidden_locs->buf[i] == loc_id) return true;
   }
   return false;
 }
@@ -198,40 +118,8 @@ read_error:
   return E_ERR;
 }
 
-// in order not to trigger an esi error timeout, I have to record every
-// location info request that respond with an E_ESI_ERR to add the 
-// corresponding location id to loc_forbidden_locs
-// NOTE: loc_forbidden_locs vector will not be free-ed as it's endended to live
-// for the hole program lifetime
-struct uint64_vec loc_forbidden_locs = { .cap = 64 };
-mutex_t           loc_forbidden_locs_mu = MUTEX_INIT;
-
-err_t loc_forbidden_locs_add(uint64_t id) {
-  mutex_lock(&loc_forbidden_locs_mu, 5);
-  err_t err = uint64_vec_push(&loc_forbidden_locs, id);
-  if (err != E_OK) {
-    errmsg_fmt("uint64_vec_push: ");
-    mutex_unlock(&loc_forbidden_locs_mu);
-    return E_ERR;
-  }
-  mutex_unlock(&loc_forbidden_locs_mu);
-  return E_OK;
-}
-
-bool loc_forbidden_locs_check(uint64_t id) {
-  mutex_lock(&loc_forbidden_locs_mu, 5);
-  for (size_t i = 0; i < loc_forbidden_locs.len; ++i) {
-    if (loc_forbidden_locs.buf[i] == id)  {
-      mutex_unlock(&loc_forbidden_locs_mu);
-      return true;
-    }
-  }
-  mutex_unlock(&loc_forbidden_locs_mu);
-  return false;
-}
-
 // this function does not set the `id` and `security` field of loc
-// WARN: upon successful retrun, name need to be free-ed
+// WARN: upon successful retrun, loc->name ownership is handed out
 err_t loc_parse_location_info(struct loc *loc, struct string loc_data) {
   err_t res = E_ERR;
   json_error_t json_err;
@@ -282,12 +170,20 @@ err_t loc_parse_location_info(struct loc *loc, struct string loc_data) {
     goto cleanup;
   }
 
+  struct string name_borrowed = string_new((char *) json_string_value(json_name));
+  struct string name_cpy;
+  err_t err = string_alloc_cpy(&name_cpy, name_borrowed);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_cpy: ");
+    goto cleanup;
+  }
+
   res = E_OK;
   *loc = (struct loc) {
     .type_id = type_id,
     .owner_id = owner_id,
     .system_id = system_id,
-    .name = string_alloc_cpy(string_new((char *) json_string_value(json_name))),
+    .name = name_cpy,
   };
 
 cleanup:
@@ -295,15 +191,11 @@ cleanup:
   return res;
 }
 
-// WARN: loc->name is read only
+// WARN: upon successful retrun, loc->name ownership is handed out
 err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
                               uint64_t id) {
   assert(loc != NULL);
   assert(sys_vec != NULL);
-
-  if (loc_forbidden_locs_check(id)) {
-    return E_LOC_FORBIDDEN;
-  }
 
   err_t res = E_ERR;
   struct esi_response response = {0};
@@ -316,11 +208,6 @@ err_t loc_fetch_location_info(struct loc *loc, struct system_vec *sys_vec,
                         true, 1);
 
   if (err == E_ESI_ERR) {
-    err = loc_forbidden_locs_add(id);
-    if (err != E_OK) {
-      errmsg_prefix("loc_forbidden_locs_add: ");
-      goto cleanup;
-    }
     res = E_LOC_FORBIDDEN;
     goto cleanup;
   } else if (err != E_OK) {
@@ -357,19 +244,51 @@ error:
   return E_ERR;
 }
 
-err_t dump_write_loc_collec(struct dump *dump, struct loc_collec *collec) {
-  size_t loc_count = loc_collec_len(collec);
-  if (dump_write_uint64(dump, loc_count) != E_OK) {
-    errmsg_prefix("dump_write_uint64: ");
-    return E_ERR;
-  }
-  for (size_t i = 0; i < loc_count; ++i) {
-    struct loc loc = loc_collec_get(collec, i);
-    if (dump_write_loc(dump, &loc) != E_OK) {
+err_t dump_write_loc_vec(struct dump *dump, struct loc_vec *loc_vec) {
+  assert(loc_vec != NULL);
+  for (size_t i = 0; i < loc_vec->len; ++i) {
+    if (dump_write_loc(dump, loc_vec->buf + i) != E_OK) {
       errmsg_prefix("dump_write_loc: ");
       return E_ERR;
     }
-    loc = (struct loc) {0};
   }
   return E_OK;
+}
+
+err_t loc_vec_load(struct loc_vec *loc_vec) {
+  assert(loc_vec != NULL);
+  *loc_vec = (struct loc_vec) { .cap = 4096 };
+
+  struct csv_reader rdr;
+  err_t err = loc_csv_init((char *) stations_csv, stations_csv_len, &rdr);
+  if (err != E_OK) {
+    errmsg_prefix("loc_csv_init: ");
+    return E_ERR;
+  }
+
+  bool eof = false;
+  while (!eof) {
+    struct loc loc = {0};
+    err = loc_csv_read(&rdr, &loc);
+    if (err == E_CSV_EOF) {
+      eof = true;
+    } else if (err != E_OK) {
+      errmsg_prefix("loc_csv_read: ");
+      return E_ERR;
+    }
+    err = loc_vec_push(loc_vec, loc);
+    if (err != E_OK) {
+      errmsg_prefix("loc_vec_push: ");
+      return E_ERR;
+    }
+  }
+  return E_OK;
+}
+
+bool loc_vec_includes(struct loc_vec *loc_vec, uint64_t loc_id) {
+  assert(loc_vec != NULL);
+  for (size_t i = 0; i < loc_vec->len; ++i) {
+    if (loc_vec->buf[i].id == loc_id) return true;
+  }
+  return false;
 }

@@ -1,7 +1,7 @@
-// each hoardling is responsible for regularly emitting one type of dump
-// each hoardling run on a separate pthread
-
-#include "stations.csv.h"
+// Each hoardling is responsible for regularly emitting one type of dump
+// Each hoardling run on a separate pthread
+// WARN: A hoardling thread can receive a SIGTERM at any point
+// If you need a more delicate exit mechanism condider using pthread_cancel
 
 struct hoardling_locations_args {
   struct string dump_dir;
@@ -12,43 +12,23 @@ void *hoardling_locations(void *args_ptr) {
   assert(args_ptr != NULL);
   struct hoardling_locations_args args = *(struct hoardling_locations_args *) args_ptr;
 
+  // in order not to trigger an esi error timeout, I have to record every
+  // location info request that respond with an E_ESI_ERR to add the 
+  // corresponding location id to forbidden_locs
+  struct uint64_vec forbidden_locs = { .cap = 64 };
+
   struct system_vec sys_vec = {0};
-  struct loc_collec loc_collec = {0};
+  struct loc_vec loc_vec = {0};
 
   err_t err = system_vec_load(&sys_vec);
   if (err != E_OK) {
     errmsg_prefix("system_vec_load: ");
     goto cleanup;
   }
-  err = loc_collec_create(&loc_collec);
+  err = loc_vec_load(&loc_vec);
   if (err != E_OK) {
-    errmsg_prefix("loc_collec_create: ");
+    errmsg_prefix("loc_vec_load: ");
     goto cleanup;
-  }
-
-  struct csv_reader rdr;
-  err = loc_csv_init((char *) stations_csv, stations_csv_len, &rdr);
-  if (err != E_OK) {
-    errmsg_prefix("loc_csv_init: ");
-    goto cleanup;
-  }
-
-  bool eof = false;
-  while (!eof) {
-    struct loc loc;
-    err = loc_csv_read(&rdr, &loc);
-    if (err == E_CSV_EOF) {
-      eof = true;
-    } else if (err != E_OK) {
-      errmsg_prefix("loc_csv_read: ");
-      goto cleanup;
-    }
-    err = loc_collec_push(&loc_collec, &loc);
-    if (err != E_OK) {
-      errmsg_prefix("loc_collec_push: ");
-      goto cleanup;
-    }
-    loc = (struct loc) {0};
   }
 
   while (true) {
@@ -63,23 +43,31 @@ void *hoardling_locations(void *args_ptr) {
 
     bool new_loc_info = false;
     for (size_t i = 0; i < locid_vec->len; ++i) {
-      uint64_t locid = locid_vec->buf[i];
-      if (!loc_collec_includes(&loc_collec, locid)) {
-        struct loc loc;
-        err = loc_fetch_location_info(&loc, &sys_vec, locid);
-        if (err != E_OK && err != E_LOC_FORBIDDEN) {
+      uint64_t loc_id = locid_vec->buf[i];
+
+      if (!loc_vec_includes(&loc_vec, loc_id) && !forbidden_locs_includes(&forbidden_locs, loc_id)) {
+        struct loc loc = {0};
+        err = loc_fetch_location_info(&loc, &sys_vec, loc_id);
+
+        if (err == E_LOC_FORBIDDEN) {
+          err = uint64_vec_push(&forbidden_locs, loc_id);
+          if (err != E_OK) {
+            errmsg_prefix("uint64_vec_push: ");
+            goto cleanup;
+          }
+        } else if (err != E_OK) {
           errmsg_prefix("loc_fetch_location_info: ");
-          log_error("locations hoardling: unable to fetch %" PRIu64 " location info", locid);
+          log_error("locations hoardling: unable to fetch %" PRIu64 " location info", loc_id);
           errmsg_print();
         } else if (err == E_OK) {
           new_loc_info = true;
-          err = loc_collec_push(&loc_collec, &loc);
+          err = loc_vec_push(&loc_vec, loc);  // ownership loc is passed to loc_vec
           if (err != E_OK) {
-            errmsg_prefix("loc_collec_push: ");
+            errmsg_prefix("loc_vec_push: ");
             goto cleanup;
           }
+          loc = (struct loc) {0};
         }
-        loc = (struct loc) {0};
       }
     }
 
@@ -102,9 +90,9 @@ void *hoardling_locations(void *args_ptr) {
         errmsg_print();
         continue;
       }
-      err = dump_write_loc_collec(&dump, &loc_collec);
+      err = dump_write_loc_vec(&dump, &loc_vec);
       if (err != E_OK) {
-        errmsg_prefix("dump_write_loc_collec: ");
+        errmsg_prefix("dump_write_loc_vec: ");
         log_error("locations hoardling: unable to emit location dump");
         errmsg_print();
         continue;
@@ -116,6 +104,8 @@ void *hoardling_locations(void *args_ptr) {
         errmsg_print();
         continue;
       }
+      log_error("locations hoardling: new location dump at %.*s",
+                (int) dump_path.len, dump_path.buf);
     }
   }
 
@@ -194,6 +184,8 @@ void *hoardling_orders(void *args_ptr) {
       errmsg_print();
       continue;
     }
+    log_error("orders hoardling: new order dump at %.*s", (int) dump_path.len,
+              dump_path.buf);
 
     struct uint64_vec locid_vec;
     err = order_create_location_id_vec(&locid_vec, &order_vec);
@@ -232,6 +224,7 @@ void *hoardling_histories(void *args) {
     goto cleanup;
   }
 
+  // TODO: request active_markets instead
   uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
   size_t ids_count = sizeof(ids) / sizeof(*ids);
 

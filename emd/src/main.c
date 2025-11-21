@@ -1,3 +1,5 @@
+// TODO: Copy interesting comments from emb-store to emd
+
 #include "base.c"
 #include "dump.c"
 #include "secrets.c"
@@ -11,7 +13,7 @@
 #include "server.c"
 #include "hoardling.c"
 
-// cli
+// cli business
 const char* MAN =
 "NAME\n"
 "\temd - Eve Market Dump\n"
@@ -71,25 +73,16 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   return E_OK;
 }
 
-void handle_sigint_sigterm(int _) {
-  exit(1);
-}
-
-void print_clean_exit(void) {
-  log_print("clean exit");
-}
-
-void global_deinit(void) {
-  curl_global_cleanup();
+volatile sig_atomic_t got_sigint = 0;
+void handle_sigint(int _) {
+  got_sigint = 1;
 }
 
 err_t global_init(void) {
-  atexit(print_clean_exit);
-  atexit(global_deinit);
   sigset_t sigset;
   sigemptyset(&sigset);
   struct sigaction action = {
-    .sa_handler = handle_sigint_sigterm,
+    .sa_handler = handle_sigint,
     .sa_mask = sigset,
     .sa_flags = 0,
   };
@@ -117,6 +110,14 @@ err_t global_init(void) {
   secret_table_create();
   srand(time(NULL));
   return E_OK;
+}
+
+// WARN: `global_cleanup` symbol is defined at the top of base.c so it can
+// be called by panic and assert. If you want to rename `global_cleanup` you
+// need to rename the definition in base.c also.
+void global_cleanup(void) {
+  curl_global_cleanup();
+  dump_record_brun();
 }
 
 // NOTE: the indended to exit the main function is to receive a SIGINT/SIGTERM
@@ -149,6 +150,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // start hoardling threads
   pthread_attr_t attr;
   int rv = pthread_attr_init(&attr);
   if (rv != 0) {
@@ -171,10 +173,39 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // main thread is used to run hoardling_orders
+  pthread_t hoardling_orders_thread;
   struct hoardling_orders_args hoardling_orders_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  hoardling_orders(&hoardling_orders_args);
+  rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
+                      &hoardling_orders_args);
+  if (rv != 0) {
+    errmsg_fmt("pthread_create: %s", strerror(errno));
+    errmsg_print();
+    return 1;
+  }
+
+  // non-busy wait for `got_sigint`
+  // first block sigint and sigterm
+  sigset_t blocker_mask, old_mask;
+  sigemptyset(&blocker_mask);
+  sigaddset(&blocker_mask, SIGINT);
+  sigaddset(&blocker_mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &blocker_mask, &old_mask);
+  while (!got_sigint) {
+    // then unblock sigint and sigterm inside sigsuspend
+    // see: https://stackoverflow.com/questions/6328055/whats-the-problem-of-pause-at-all
+    sigsuspend(&old_mask);
+  }
+  // note that for sigint and sigterm are still blocked
+  // I could unblock them but I don't realy need to
+
+  rv = pthread_kill(hoardling_locations_thread, SIGTERM);
+  if (rv != 0) log_error("locations hoardling thread kill failed: %s", strerror(errno));
+  rv = pthread_kill(hoardling_orders_thread, SIGTERM);
+  if (rv != 0) log_error("orders hoardling thread kill failed: %s", strerror(errno));
+  global_cleanup();
+  log_print("graceful exit");
+  return 0;
 }

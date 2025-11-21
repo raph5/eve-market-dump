@@ -54,6 +54,8 @@
 /******************************************************************************
  * panic                                                                      *
  ******************************************************************************/
+void global_cleanup(void);
+
 #define panic(msg) _panic(msg, __LINE__, __FILE__)
 #define assert(test) _assert(test, __LINE__, __FILE__)
 
@@ -68,6 +70,7 @@ void _panic(const char *msg, int line, char *file) {
   void *trace[4096];
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
+  global_cleanup();
   exit(1);
 }
 
@@ -80,12 +83,14 @@ void _assert(bool test, int line, char *file) {
   void *trace[4096];
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
+  global_cleanup();
   exit(1);
 }
 #else
 void _panic(const char *msg, int line, char *file) {
   fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m file %s, line %d, %s\n", file, line,
           msg);
+  global_cleanup();
   exit(1);
 }
 
@@ -94,6 +99,7 @@ void _assert(bool test, int line, char *file) {
 
   fprintf(stderr, "\x1b[1;35massertion failed:\x1b[0m file %s, line %d:\n",
           file, line);
+  global_cleanup();
   exit(1);
 }
 #endif
@@ -166,15 +172,6 @@ struct string string_new(char *s) {
 // for static initialization
 #define STRING_NEW(s) (struct string) { .buf = s, .len = strlen(s) }
 
-struct string string_alloc(size_t len) {
-  char *buf = malloc(len);
-  if (buf == NULL) {
-    return (struct string) { .buf = NULL, .len = 0 };
-  } else {
-    return (struct string) { .buf = buf, .len = len };
-  }
-}
-
 void string_destroy(struct string *str) {
   assert(str != NULL);
   free(str->buf);
@@ -212,16 +209,6 @@ void string_cpy(struct string dest, struct string src) {
     panic("incompatible string sizes");
   }
   memcpy(dest.buf, src.buf, src.len);
-}
-
-struct string string_alloc_cpy(struct string src) {
-  char *buf = malloc(src.len);
-  if (buf == NULL) {
-    return (struct string) { .buf = NULL, .len = 0 };
-  } else {
-    memcpy(buf, src.buf, src.len);
-    return (struct string) { .buf = buf, .len = src.len };
-  }
 }
 
 // returns < 0  if a < b
@@ -311,6 +298,52 @@ void errmsg_panic_prefix(const char *prefix) {
   errmsg_prefix(prefix);
   errmsg_panic();
 }
+
+
+/******************************************************************************
+ * strings alloc                                                              *
+ ******************************************************************************/
+
+// string allocation function can return err_t so they need to be defined after
+// err_t
+
+// returned string memory is not initialized
+err_t string_alloc(struct string *str, size_t len) {
+  assert(str != NULL);
+  char *buf = malloc(len);
+  if (buf == NULL) {
+    errmsg_fmt("malloc: %s", strerror(errno));
+    return E_ERR;
+  }
+  *str = (struct string) { .buf = buf, .len = len };
+  return E_OK;
+}
+
+err_t string_alloc_cpy(struct string *dst, struct string src) {
+  assert(dst != NULL);
+  char *buf = malloc(src.len);
+  if (buf == NULL) {
+    errmsg_fmt("malloc: %s", strerror(errno));
+    return E_ERR;
+  }
+  memcpy(buf, src.buf, src.len);
+  *dst = (struct string) { .buf = buf, .len = src.len };
+  return E_OK;
+}
+
+err_t string_alloc_null_terminated_cpy(char **dst, struct string src) {
+  assert(dst != NULL);
+  char *buf = malloc(src.len + 1);
+  if (buf == NULL) {
+    errmsg_fmt("malloc: %s", strerror(errno));
+    return E_ERR;
+  }
+  memcpy(buf, src.buf, src.len);
+  buf[src.len] = '\0';
+  *dst = buf;
+  return E_OK;
+}
+
 
 /******************************************************************************
  * dynamic string                                                             *
@@ -514,64 +547,6 @@ struct string string_pool_get(const struct string_pool *sp, size_t s_idx) {
 }
 
 /******************************************************************************
- * context                                                                    *
- ******************************************************************************/
-/*
-#define CONTEXT_VALUES_MAX 16
-
-struct context_value {
-  struct string key;
-  void *value;
-};
-
-struct context_value_tab {
-  size_t count;
-  struct context_value t[CONTEXT_VALUES_MAX];
-};
-
-struct context {
-  struct context_value_tab value_tab;
-};
-
-void context_init_value(struct context *ctx, struct string key, void *value) {
-  assert(ctx != NULL);
-  for (size_t i = 0; i < ctx->value_tab.count; ++i) {
-    if (string_cmp(key, ctx->value_tab.t[i].key) == 0) {
-      panic("context: key already in use");
-    }
-  }
-  if (ctx->value_tab.count >= CONTEXT_VALUES_MAX) {
-    panic("context: you ran out of values slots");
-  }
-  ctx->value_tab.t[ctx->value_tab.count].key = key;
-  ctx->value_tab.t[ctx->value_tab.count].value = value;
-  ++ctx->value_tab.count;
-}
-
-void context_set_value(struct context *ctx, struct string key, void *value) {
-  assert(ctx != NULL);
-  for (size_t i = 0; i < ctx->value_tab.count; ++i) {
-    if (string_cmp(key, ctx->value_tab.t[i].key) == 0) {
-      ctx->value_tab.t[i].value = value;
-      return;
-    }
-  }
-  panic("context: value not found");
-}
-
-void *context_get_value(const struct context *ctx, struct string key) {
-  assert(ctx != NULL);
-  for (size_t i = 0; i < ctx->value_tab.count; ++i) {
-    if (string_cmp(key, ctx->value_tab.t[i].key) == 0) {
-      return ctx->value_tab.t[i].value;
-    }
-  }
-  panic("context: value not found");
-  return NULL;
-}
-*/
-
-/******************************************************************************
  * mutexs                                                                     *
  ******************************************************************************/
 #define MUTEX_INIT PTHREAD_MUTEX_INITIALIZER
@@ -653,20 +628,6 @@ err_t semaphore_create(sem_t **sem_ptr, size_t value) {
   *sem_ptr = sem;
   return E_OK;
 }
-
-/******************************************************************************
- * critical path                                                              *
- ******************************************************************************/
-
-// a critical path is a sections of code that we don't want to be stopped by a
-// SIGINT or a SIGTERM
-
-/*
-err_t critical_path_setup() {
-  // TODO:
-  int rv = sigaction();
-}
-*/
 
 /******************************************************************************
  * FIFO                                                                       *
