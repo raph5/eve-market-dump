@@ -5,6 +5,7 @@ const char    DUMP_ASCII_ART[32] = "இ}ڿڰۣ-ڰۣ~—";
 const uint8_t DUMP_TYPE_LOCATIONS = 0;
 const uint8_t DUMP_TYPE_ORDERS    = 1;
 const uint8_t DUMP_TYPE_HISTORIES = 2;
+const uint8_t DUMP_TYPE_INTERNAL  = 3;
 
 struct dump_record_entry {
   FILE *fp;
@@ -53,7 +54,7 @@ void dump_record_pop(FILE* fp) {
 
 // close and unlink (remove) every files that are still in the dump_record
 // any error will be printed to stdout
-void dump_record_brun(void) {
+void dump_record_burn(void) {
   mutex_lock(&global_dump_record_mu, 3);
   for (size_t i = 0; i < global_dump_record_len; ++i) {
     FILE *fp = global_dump_record[i].fp;
@@ -92,6 +93,7 @@ err_t dump_open(struct dump *dump, struct string path, uint8_t type,
     errmsg_fmt("fopen: %s", strerror(errno));
     return E_ERR;
   }
+  dump_record_push(file, path);
 
   // version
   err_t err = serialize_uint8(file, DUMP_VERSION);
@@ -162,6 +164,7 @@ err_t dump_close(struct dump *dump) {
     errmsg_fmt("fclose: %s", strerror(errno));
     return E_ERR;
   }
+  dump_record_pop(dump->file);
   dump->file = NULL;
   dump->checksum = 0;
 
@@ -265,4 +268,13 @@ err_t dump_write_string(struct dump *dump, struct string s) {
     }
   }
   return E_OK;
+}
+
+err_t dump_write_date(struct dump *dump, struct date date) {
+  if (dump_write_uint16(dump, date.year) != E_OK) goto error;
+  if (dump_write_uint16(dump, date.day) != E_OK) goto error;
+  return E_OK;
+error:
+  errmsg_prefix("dump_write_uint16: ");
+  return E_ERR;
 }

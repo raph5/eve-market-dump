@@ -10,7 +10,8 @@
 #include "histories.c"
 #include "server.c"
 #include "hoardling.c"
-#include <sys/semaphore.h>
+
+void global_cleanup(void) {}
 
 void test_zeroed_vec(void) {
   struct size_vec vec = {0};
@@ -132,10 +133,19 @@ void test_ptr_fifo(void) {
   ptr_fifo_destroy(&fifo);
 }
 
-// TODO: test dump_record
+void test_dump_record(void) {
+  struct dump dump;
+  err_t err = dump_open(&dump, string_new("/tmp/dump_record_test"), 0, 0);
+  assert(err == E_OK);
+  sleep(3);
+  dump_record_burn();
+}
 
 int main(void) {
   printf("---------- TEST START ----------\n");
+
+  // printf("---------- test_dump_record ----------\n");
+  // test_dump_record();
 
   printf("---------- test_unsafe_ptr_fifo ----------\n");
   test_unsafe_ptr_fifo();

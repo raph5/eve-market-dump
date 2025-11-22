@@ -862,6 +862,35 @@ err_t date_parse(const char *format, const char *str, struct date *date) {
   return E_OK;
 }
 
+// is date a strictly before date b (return false if a == b)
+bool date_is_before(struct date a, struct date b) {
+  return a.year < b.year || (a.year == b.year && a.day < b.day);
+}
+
+// is date a strictly after date b (return false if a == b)
+bool date_is_after(struct date a, struct date b) {
+  return a.year > b.year || (a.year == b.year && a.day > b.day);
+}
+
+bool date_is_equal(struct date a, struct date b) {
+  return a.year == b.year && a.day == b.day;
+}
+
+bool date_is_leap_year(uint16_t year) {
+  return year % 400 == 0 || (year % 4 == 0 && year % 100 != 0);
+}
+
+void date_incr(struct date *date) {
+  assert(date != NULL);
+  uint64_t day_in_year = date_is_leap_year(date->year) ? 366 : 365;
+  if (date->day >= day_in_year) {
+    date->day = 1;
+    date->year += 1;
+  } else {
+    date->day += 1;
+  }
+}
+
 /******************************************************************************
  * serialization                                                              *
  ******************************************************************************/

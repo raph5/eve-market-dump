@@ -216,46 +216,91 @@ cleanup:
 }
 
 void *hoardling_histories(void *args) {
-  struct history_day_vec day_vec = {0};
-  
-  err_t err = history_day_vec_create(&day_vec, 512);
-  if (err != E_OK) {
-    errmsg_prefix("history_day_vec_create: ");
-    goto cleanup;
-  }
+  // TODO: wrap hoardling_histories body into a while loop
+  // TODO: add resilience
+
+  // Initial history fetch example
 
   // TODO: request active_markets instead
   uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
   size_t ids_count = sizeof(ids) / sizeof(*ids);
-
+  struct history_market_vec market_vec = { .cap = ids_count };
   for (size_t i = 0; i < ids_count; ++i) {
-    struct history_market market = { .region_id = 10000002, .type_id = ids[i] };
-    // TODO: remove log
-    log_print("download %" PRIu64, ids[i]);
-    err = history_download(&day_vec, market, NULL, NULL);
+    struct history_market market = {
+      .region_id = 10000002,
+      .type_id = ids[i],
+    };
+    err_t err = history_market_vec_push(&market_vec, market);
     if (err != E_OK) {
-      errmsg_prefix("histroy_download: ");
+      errmsg_prefix("history_market_vec_push: ");
       goto cleanup;
     }
   }
 
-  history_day_print(day_vec.buf + day_vec.len - 1);
-
-  struct dump dump;
-  err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, time(NULL));
+  struct dump snapshot_dump;
+  err_t err = dump_open(&snapshot_dump, string_new("/tmp/emd_snapshot_dump"),
+                        DUMP_TYPE_INTERNAL, 0);
   if (err != E_OK) {
     errmsg_prefix("dump_open: ");
     goto cleanup;
   }
-  err = dump_write_history_day(&dump, day_vec.buf + day_vec.len - 1);
-  if (err != E_OK) {
-    errmsg_prefix("dump_write_order_table: ");
-    goto cleanup;
+
+  struct date first_day = {0};
+  struct date last_day = {0};
+  struct history_bit_vec bit_vec = { .cap = 512 };
+  for (size_t i = 0; i < market_vec.len; ++i) {
+    struct history_market market = market_vec.buf[i];
+    bit_vec.len = 0;
+
+    err = history_download(&bit_vec, market);
+    if (err != E_OK) {
+      errmsg_prefix("histroy_download: ");
+      goto cleanup;
+    }
+
+    if (bit_vec.len > 0) {
+      struct date history_first_day = bit_vec.buf[0].date;
+      struct date history_last_day = bit_vec.buf[bit_vec.len-1].date;
+      if (date_is_before(history_first_day, first_day)) {
+        first_day = history_first_day;
+      }
+      if (date_is_after(history_last_day, last_day)) {
+        last_day = history_last_day;
+      }
+
+      err = dump_write_history_bit_vec(&snapshot_dump, &bit_vec);
+      if (err != E_OK) {
+        errmsg_prefix("dump_write_history_bit_vec: ");
+        goto cleanup;
+      }
+    }
   }
-  err = dump_close(&dump);
-  if (err != E_OK) {
-    errmsg_prefix("dump_close: ");
-    goto cleanup;
+  assert(first_day.year != 0 && last_day.year != 0);
+
+  for (struct date date = first_day;
+       date_is_before(date, last_day) || date_is_equal(date, last_day);
+       date_incr(&date)) {
+    // TODO: loop over history_bit chunks
+
+    // TODO: set an expiration, a name...
+    /*
+    struct dump dump;
+    err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, 0);
+    if (err != E_OK) {
+      errmsg_prefix("dump_open: ");
+      goto cleanup;
+    }
+    err = dump_write_history_day(&dump, day_vec.buf + day_vec.len - 1);
+    if (err != E_OK) {
+      errmsg_prefix("dump_write_order_table: ");
+      goto cleanup;
+    }
+    err = dump_close(&dump);
+    if (err != E_OK) {
+      errmsg_prefix("dump_close: ");
+      goto cleanup;
+    }
+    */
   }
 
 cleanup:

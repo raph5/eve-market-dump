@@ -117,7 +117,7 @@ err_t global_init(void) {
 // need to rename the definition in base.c also.
 void global_cleanup(void) {
   curl_global_cleanup();
-  dump_record_brun();
+  dump_record_burn();
 }
 
 // NOTE: the indended to exit the main function is to receive a SIGINT/SIGTERM

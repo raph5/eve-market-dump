@@ -12,8 +12,15 @@ struct history_stats {
   uint64_t volume;
 };
 
+struct history_bit {
+  struct date date;
+  struct history_market market;
+  struct history_stats stats;
+};
+
 IMPLEMENT_VEC(struct history_market, history_market)
 IMPLEMENT_VEC(struct history_stats, history_stats)
+IMPLEMENT_VEC(struct history_bit, history_bit)
 
 struct history_day {
   struct date date;
@@ -154,15 +161,16 @@ err_t get_active_markets(struct history_market_vec *market_vec,
   return E_OK;
 }
 
-err_t history_parse(struct history_day_vec *day_vec, struct string raw,
+err_t history_parse(struct history_bit_vec *bit_vec, struct string raw_json,
                     struct history_market market) {
-  assert(day_vec != NULL);
+  assert(bit_vec != NULL);
 
   err_t res = E_ERR;
+  size_t bit_vec_initial_len = bit_vec->len;
   json_t *root;
 
   json_error_t json_err;
-  root = json_loadb(raw.buf, raw.len, 0, &json_err);
+  root = json_loadb(raw_json.buf, raw_json.len, 0, &json_err);
   if (root == NULL) {
     errmsg_fmt("json error on line %d: %s", json_err.line, json_err.text);
     goto cleanup;
@@ -228,33 +236,20 @@ err_t history_parse(struct history_day_vec *day_vec, struct string raw,
       goto cleanup;
     }
 
-    struct history_stats stats = {
-      .average = json_real_value(json_average),
-      .highest = json_real_value(json_highest),
-      .lowest = json_real_value(json_lowest),
-      .order_count = order_count,
-      .volume = volume,
+    struct history_bit bit = {
+      .date = date,
+      .market = market,
+      .stats = {
+        .average = json_real_value(json_average),
+        .highest = json_real_value(json_highest),
+        .lowest = json_real_value(json_lowest),
+        .order_count = order_count,
+        .volume = volume,
+      },
     };
-
-    struct history_day *day = history_day_vec_get_by_date(day_vec, date);
-    if (day == NULL) {
-      struct history_day new_day;
-      err = history_day_create(&new_day, date);
-      if (err != E_OK) {
-        errmsg_prefix("history_day_create: ");
-        goto cleanup;
-      }
-      err = history_day_vec_push(day_vec, new_day);
-      if (err != E_OK) {
-        errmsg_prefix("history_day_vec_push: ");
-        goto cleanup;
-      }
-      day = day_vec->buf + day_vec->len - 1;
-    }
-
-    err = history_day_push(day, market, stats);
+    err = history_bit_vec_push(bit_vec, bit);
     if (err != E_OK) {
-      errmsg_prefix("history_day_push: ");
+      errmsg_prefix("history_bit_vec_push: ");
       goto cleanup;
     }
   }
@@ -262,29 +257,17 @@ err_t history_parse(struct history_day_vec *day_vec, struct string raw,
   res = E_OK;
 
 cleanup:
-  if (res != E_OK) {
-    // rollback
-    for (size_t i = 0; i < day_vec->len; ++i) {
-      struct history_day day = day_vec->buf[i];
-      if (
-        day.key.len > 0 &&
-        day.key.buf[day.key.len - 1].region_id == market.region_id &&
-        day.key.buf[day.key.len - 1].type_id == market.type_id
-      ) {
-        day.key.len -= 1;
-        day.val.len -= 1;
-      }
-    }
-  }
+  if (res != E_OK) bit_vec->len = bit_vec_initial_len;
   json_decref(root);
   return res;
 }
 
-// on successful return, history_download pushes the history data to day_vec
-err_t history_download(struct history_day_vec *day_vec,
-                       struct history_market market,
-                       time_t *expires, time_t *modified) {
-  assert(day_vec != NULL);
+err_t history_download(struct history_bit_vec *bit_vec,
+                       struct history_market market) {
+  assert(bit_vec != NULL);
+
+  // TODO: remove log
+  log_print("download market (%" PRIu64 ", %" PRIu64 ")", market.region_id, market.type_id);
 
   err_t res = E_ERR;
   struct esi_response response = {0};
@@ -301,22 +284,12 @@ err_t history_download(struct history_day_vec *day_vec,
     goto cleanup;
   }
 
-  err = history_parse(day_vec, response.body, market);
+  err = history_parse(bit_vec, response.body, market);
   if (err != E_OK) {
     errmsg_prefix("history_parse: ");
     goto cleanup;
   }
 
-  if (expires != NULL && response.expires == 0) {
-    errmsg_fmt("expires is null, that likely mean esi_fetch could not get expires");
-    goto cleanup;
-  }
-  if (modified != NULL && response.modified == 0) {
-    errmsg_fmt("modified is null, that likely mean esi_fetch could not get modified");
-    goto cleanup;
-  }
-  if (expires != NULL) *expires = response.expires;
-  if (modified != NULL) *modified = response.modified;
   res = E_OK;
 
 cleanup:
@@ -375,4 +348,33 @@ err_t dump_write_history_day(struct dump *dump, struct history_day *day) {
 error:
   errmsg_prefix("dump_write_uint16/uint64: ");
   return E_ERR;
+}
+
+err_t dump_write_history_bit(struct dump *dump, struct history_bit *bit) {
+  assert(bit != NULL);
+  if (dump_write_date(dump, bit->date) != E_OK) {
+    errmsg_prefix("dump_write_date: ");
+    return E_ERR;
+  }
+  if (dump_write_history_market(dump, &bit->market) != E_OK) {
+    errmsg_prefix("dump_write_history_market: ");
+    return E_ERR;
+  }
+  if (dump_write_history_stats(dump, &bit->stats) != E_OK) {
+    errmsg_prefix("dump_write_history_stats: ");
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+err_t dump_write_history_bit_vec(struct dump *dump,
+                                 struct history_bit_vec *history_bit_vec) {
+  assert(history_bit_vec != NULL);
+  for (size_t i = 0; i < history_bit_vec->len; ++i) {
+    if (dump_write_history_bit(dump, history_bit_vec->buf + i) != E_OK) {
+      errmsg_prefix("dump_write_history_bit: ");
+      return E_ERR;
+    }
+  }
+  return E_OK;
 }
