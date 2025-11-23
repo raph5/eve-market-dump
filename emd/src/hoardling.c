@@ -49,17 +49,7 @@ void *hoardling_locations(void *args_ptr) {
         struct loc loc = {0};
         err = loc_fetch_location_info(&loc, &sys_vec, loc_id);
 
-        if (err == E_LOC_FORBIDDEN) {
-          err = uint64_vec_push(&forbidden_locs, loc_id);
-          if (err != E_OK) {
-            errmsg_prefix("uint64_vec_push: ");
-            goto cleanup;
-          }
-        } else if (err != E_OK) {
-          errmsg_prefix("loc_fetch_location_info: ");
-          log_error("locations hoardling: unable to fetch %" PRIu64 " location info", loc_id);
-          errmsg_print();
-        } else if (err == E_OK) {
+        if (err == E_OK) {
           new_loc_info = true;
           err = loc_vec_push(&loc_vec, loc);  // ownership loc is passed to loc_vec
           if (err != E_OK) {
@@ -67,6 +57,16 @@ void *hoardling_locations(void *args_ptr) {
             goto cleanup;
           }
           loc = (struct loc) {0};
+        } else if (err == E_LOC_FORBIDDEN) {
+          err = uint64_vec_push(&forbidden_locs, loc_id);
+          if (err != E_OK) {
+            errmsg_prefix("uint64_vec_push: ");
+            goto cleanup;
+          }
+        } else {
+          errmsg_prefix("loc_fetch_location_info: ");
+          log_error("locations hoardling: unable to fetch %" PRIu64 " location info", loc_id);
+          errmsg_print();
         }
       }
     }
@@ -83,9 +83,9 @@ void *hoardling_locations(void *args_ptr) {
                                            args.dump_dir.buf, now);
 
       struct dump dump;
-      err = dump_open(&dump, dump_path, DUMP_TYPE_LOCATIONS, time(NULL));
+      err = dump_open_write(&dump, dump_path, DUMP_TYPE_LOCATIONS, time(NULL));
       if (err != E_OK) {
-        errmsg_prefix("dump_open: ");
+        errmsg_prefix("dump_open_write: ");
         log_error("locations hoardling: unable to emit location dump");
         errmsg_print();
         continue;
@@ -97,9 +97,9 @@ void *hoardling_locations(void *args_ptr) {
         errmsg_print();
         continue;
       }
-      err = dump_close(&dump);
+      err = dump_close_write(&dump);
       if (err != E_OK) {
-        errmsg_prefix("dump_close: ");
+        errmsg_prefix("dump_close_write: ");
         log_error("locations hoardling: unable to emit location dump");
         errmsg_print();
         continue;
@@ -163,9 +163,9 @@ void *hoardling_orders(void *args_ptr) {
                                          args.dump_dir.buf, now);
 
     struct dump dump;
-    err = dump_open(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
+    err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
     if (err != E_OK) {
-      errmsg_prefix("dump_open: ");
+      errmsg_prefix("dump_open_write: ");
       log_error("orders hoardling: unable to emit order dump");
       errmsg_print();
       continue;
@@ -177,9 +177,9 @@ void *hoardling_orders(void *args_ptr) {
       errmsg_print();
       continue;
     }
-    err = dump_close(&dump);
+    err = dump_close_write(&dump);
     if (err != E_OK) {
-      errmsg_prefix("dump_close: ");
+      errmsg_prefix("dump_close_write: ");
       log_error("orders hoardling: unable to emit order dump");
       errmsg_print();
       continue;
@@ -215,7 +215,14 @@ cleanup:
   return NULL;
 }
 
-void *hoardling_histories(void *args) {
+struct hoardling_histories_args {
+  struct string dump_dir;
+};
+
+void *hoardling_histories(void *args_ptr) {
+  assert(args_ptr != NULL);
+  struct hoardling_histories_args args = *(struct hoardling_histories_args *) args_ptr;
+
   // TODO: wrap hoardling_histories body into a while loop
   // TODO: add resilience
 
@@ -238,10 +245,11 @@ void *hoardling_histories(void *args) {
   }
 
   struct dump snapshot_dump;
-  err_t err = dump_open(&snapshot_dump, string_new("/tmp/emd_snapshot_dump"),
-                        DUMP_TYPE_INTERNAL, 0);
+  struct string snapshot_dump_path = string_new("/tmp/emd_snapshot_dump");
+  err_t err = dump_open_write(&snapshot_dump, snapshot_dump_path,
+                              DUMP_TYPE_INTERNAL, 0);
   if (err != E_OK) {
-    errmsg_prefix("dump_open: ");
+    errmsg_prefix("dump_open_write: ");
     goto cleanup;
   }
 
@@ -277,30 +285,84 @@ void *hoardling_histories(void *args) {
   }
   assert(first_day.year != 0 && last_day.year != 0);
 
+  err = dump_close_write(&snapshot_dump);
+  if (err != E_OK) {
+    errmsg_prefix("dump_close_write: ");
+    goto cleanup;
+  }
+  err = dump_open_read(&snapshot_dump, snapshot_dump_path);
+  if (err != E_OK) {
+    errmsg_prefix("dump_open_read: ");
+    goto cleanup;
+  }
+
+  struct history_bit_vec bit_chunk = { .cap = 10000 };
   for (struct date date = first_day;
        date_is_before(date, last_day) || date_is_equal(date, last_day);
        date_incr(&date)) {
-    // TODO: loop over history_bit chunks
+    bit_vec.len = 0;
 
-    // TODO: set an expiration, a name...
-    /*
+    bool eof = false;
+    while (!eof) {
+      bit_chunk.len = 0;
+      err = dump_read_history_bit_vec(&snapshot_dump, &bit_chunk, 10000);
+      if (err == E_EOF) {
+        eof = true;
+      } else if (err != E_OK) {
+        errmsg_prefix("dump_read_history_bit_vec: ");
+        goto cleanup;
+      }
+
+      for (size_t i = 0; i < bit_chunk.len; ++i) {
+        if (date_is_equal(date, bit_chunk.buf[i].date)) {
+          err = history_bit_vec_push(&bit_vec, bit_chunk.buf[i]);
+          if (err != E_OK) {
+            errmsg_prefix("history_bit_vec_push: ");
+            goto cleanup;
+          }
+        }
+      }
+    }
+
+    // dump it!
+    const size_t DUMP_PATH_LEN_MAX = 2048;
+    char dump_path_buf[DUMP_PATH_LEN_MAX];
+    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
+                                         "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+                                         (int) args.dump_dir.len,
+                                         args.dump_dir.buf, date.year, date.day);
+
+    // TODO: set an expiration
     struct dump dump;
-    err = dump_open(&dump, string_new("day.dump"), DUMP_TYPE_HISTORIES, 0);
+    err = dump_open_write(&dump, dump_path, DUMP_TYPE_HISTORIES, 0);
     if (err != E_OK) {
-      errmsg_prefix("dump_open: ");
+      errmsg_prefix("dump_open_write: ");
+      log_error("histories hoardling: unable to emit history dump");
+      errmsg_print();
       goto cleanup;
     }
-    err = dump_write_history_day(&dump, day_vec.buf + day_vec.len - 1);
+    err = dump_write_history_dump(&dump, date, &bit_vec);
     if (err != E_OK) {
       errmsg_prefix("dump_write_order_table: ");
+      log_error("histories hoardling: unable to emit history dump");
+      errmsg_print();
       goto cleanup;
     }
-    err = dump_close(&dump);
+    err = dump_close_write(&dump);
     if (err != E_OK) {
-      errmsg_prefix("dump_close: ");
+      errmsg_prefix("dump_close_write: ");
+      log_error("histories hoardling: unable to emit history dump");
+      errmsg_print();
       goto cleanup;
     }
-    */
+    log_error("histories hoardling: new history dump at %.*s",
+              (int) dump_path.len, dump_path.buf);
+  }
+
+  err = dump_close_read(&snapshot_dump);
+  if (err != E_OK) {
+    errmsg_prefix("dump_close_read: ");
+    goto cleanup;
   }
 
 cleanup:

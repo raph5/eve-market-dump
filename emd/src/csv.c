@@ -1,8 +1,5 @@
 // This is a csv parser. Multiline strings are not supported.
 
-const err_t E_CSV_BASE = 2000;
-const err_t E_CSV_EOF = E_CSV_BASE + 1;
-
 const char CSV_SEPARATOR = ',';
 const char CSV_NEWLINE   = '\n';
 
@@ -38,7 +35,7 @@ err_t csv_line_end(struct csv_reader *rdr) {
 
   // a csv file may terminate by a '\n' byte
   if (rdr->idx == rdr->buf_len || rdr->idx + 1 == rdr->buf_len) {
-    return E_CSV_EOF;
+    return E_EOF;
   }
   rdr->idx += 1;
   rdr->line_start_idx = rdr->idx;

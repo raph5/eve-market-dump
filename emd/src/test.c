@@ -135,11 +135,13 @@ void test_ptr_fifo(void) {
 
 void test_dump_record(void) {
   struct dump dump;
-  err_t err = dump_open(&dump, string_new("/tmp/dump_record_test"), 0, 0);
+  err_t err = dump_open_write(&dump, string_new("/tmp/dump_record_test"), 0, 0);
   assert(err == E_OK);
   sleep(3);
   dump_record_burn();
 }
+
+// TODO: test checksum
 
 int main(void) {
   printf("---------- TEST START ----------\n");

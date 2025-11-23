@@ -62,7 +62,7 @@ err_t system_vec_load(struct system_vec *system_vec) {
     }
 
     err = csv_line_end(&rdr);
-    if (err == E_CSV_EOF) {
+    if (err == E_EOF) {
       eof = true;
     } else if (err != E_OK) {
       errmsg_prefix("csv_line_end: ");

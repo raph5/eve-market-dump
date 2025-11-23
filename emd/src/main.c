@@ -120,6 +120,9 @@ void global_cleanup(void) {
   dump_record_burn();
 }
 
+// TODO: I not 100% but I think a call to exit will not trigger a clean exit.
+// If that's the case I need to ban that function from the codebase
+
 // NOTE: the indended to exit the main function is to receive a SIGINT/SIGTERM
 int main(int argc, char *argv[]) {
   err_t err = global_init();

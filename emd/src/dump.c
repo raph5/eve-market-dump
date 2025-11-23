@@ -75,14 +75,21 @@ void dump_record_burn(void) {
   mutex_unlock(&global_dump_record_mu);
 }
 
+enum dump_mode {
+  DUMP_WRITE,
+  DUMP_READ,
+};
+
 struct dump {
   FILE *file;
   uint32_t checksum;
+  enum dump_mode mode;
 };
 
 // `expiration` is expiration date of said data
-err_t dump_open(struct dump *dump, struct string path, uint8_t type,
-                time_t expiration) {
+// WARN: Don't open a file twice
+err_t dump_open_write(struct dump *dump, struct string path, uint8_t type,
+                      time_t expiration) {
   assert(dump != NULL);
 
   const size_t PATH_LEN_MAX = 2048;
@@ -137,12 +144,14 @@ err_t dump_open(struct dump *dump, struct string path, uint8_t type,
 
   dump->file = file;
   dump->checksum = 0;
+  dump->mode = DUMP_WRITE;
   return E_OK;
 }
 
-err_t dump_close(struct dump *dump) {
+err_t dump_close_write(struct dump *dump) {
   assert(dump != NULL);
   assert(dump->file != NULL);
+  assert(dump->mode == DUMP_WRITE);
 
   // update checksum
   int rv = fseek(dump->file, 2, SEEK_SET);
@@ -171,9 +180,52 @@ err_t dump_close(struct dump *dump) {
   return E_OK;
 }
 
+// WARN: Don't open a file twice
+err_t dump_open_read(struct dump *dump, struct string path) {
+  assert(dump != NULL);
+
+  const size_t PATH_LEN_MAX = 2048;
+  char path_nt[PATH_LEN_MAX];
+  string_null_terminate(path, path_nt, PATH_LEN_MAX);
+  FILE *file = fopen(path_nt, "r");
+  if (file == NULL) {
+    errmsg_fmt("fopen: %s", strerror(errno));
+    return E_ERR;
+  }
+
+  int rv = fseek(file, 46, SEEK_SET);  // seek the begin of the body
+  if (rv != 0) {
+    errmsg_fmt("fseek: %s", strerror(errno));
+    fclose(dump->file);
+    return E_ERR;
+  }
+
+  // NOTE: here, I didn't checked the dump version nor checksum
+  dump->file = file;
+  dump->checksum = 0;
+  dump->mode = DUMP_READ;
+  return E_OK;
+}
+
+err_t dump_close_read(struct dump *dump) {
+  assert(dump != NULL);
+  assert(dump->file != NULL);
+  assert(dump->mode == DUMP_READ);
+
+  int rv = fclose(dump->file);
+  if (rv != 0) {
+    errmsg_fmt("fclose: %s", strerror(errno));
+    return E_ERR;
+  }
+  dump->file = NULL;
+  dump->checksum = 0;
+  return E_OK;
+}
+
 err_t dump_write(struct dump *dump, const unsigned char *buf, size_t buf_len) {
   assert(dump != NULL);
   assert(dump->file != NULL);
+  assert(dump->mode == DUMP_WRITE);
   assert(buf != NULL);
 
   size_t items = fwrite(buf, buf_len, 1, dump->file);
@@ -276,5 +328,120 @@ err_t dump_write_date(struct dump *dump, struct date date) {
   return E_OK;
 error:
   errmsg_prefix("dump_write_uint16: ");
+  return E_ERR;
+}
+
+err_t dump_read(struct dump *dump, unsigned char *buf, size_t buf_len) {
+  assert(dump != NULL);
+  assert(dump->file != NULL);
+  assert(dump->mode == DUMP_READ);
+  assert(buf != NULL);
+
+  size_t items = fread(buf, buf_len, 1, dump->file);
+  if (items < 1) {
+    if (feof(dump->file)) {
+      return E_EOF;
+    } else {
+      errmsg_fmt("fread: %s", strerror(errno));
+      return E_ERR;
+    }
+  }
+
+  return E_OK;
+}
+
+err_t dump_read_uint8(struct dump *dump, uint8_t *n) {
+  assert(n != NULL);
+  unsigned char bytes[1] = {0};
+  err_t err = dump_read(dump, bytes, 1);
+  if (err != E_OK) {
+    errmsg_prefix("dump_read: ");
+    return E_ERR;
+  }
+  *n = (uint8_t) bytes[0];
+  return E_OK;
+}
+
+err_t dump_read_uint16(struct dump *dump, uint16_t *n) {
+  assert(n != NULL);
+  unsigned char bytes[2] = {0};
+  err_t err = dump_read(dump, bytes, 2);
+  if (err != E_OK) {
+    errmsg_prefix("dump_read: ");
+    return E_ERR;
+  }
+  *n = ((uint16_t) bytes[0] << 8) + (uint16_t) bytes[1];
+  return E_OK;
+}
+
+err_t dump_read_uint32(struct dump *dump, uint32_t *n) {
+  assert(n != NULL);
+  unsigned char bytes[4] = {0};
+  err_t err = dump_read(dump, bytes, 4);
+  if (err != E_OK) {
+    errmsg_prefix("dump_read: ");
+    return E_ERR;
+  }
+  *n = ((uint32_t) bytes[0] << 24) + ((uint32_t) bytes[1] << 16) + \
+       ((uint32_t) bytes[2] << 8) + (uint32_t) bytes[3];
+  return E_OK;
+}
+
+err_t dump_read_uint64(struct dump *dump, uint64_t *n) {
+  assert(n != NULL);
+  unsigned char bytes[8] = {0};
+  err_t err = dump_read(dump, bytes, 8);
+  if (err != E_OK) {
+    errmsg_prefix("dump_read: ");
+    return E_ERR;
+  }
+  *n = ((uint64_t) bytes[0] << 56) + ((uint64_t) bytes[1] << 48) + \
+       ((uint64_t) bytes[2] << 40) + ((uint64_t) bytes[3] << 32) + \
+       ((uint64_t) bytes[4] << 24) + ((uint64_t) bytes[5] << 16) + \
+       ((uint64_t) bytes[6] << 8) + (uint64_t) bytes[7];
+  return E_OK;
+}
+
+err_t dump_read_int8(struct dump *dump, int8_t *n) {
+  return dump_read_uint8(dump, (uint8_t *) n);
+}
+
+err_t dump_read_int16(struct dump *dump, int16_t *n) {
+  return dump_read_uint16(dump, (uint16_t *) n);
+}
+
+err_t dump_read_int32(struct dump *dump, int32_t *n) {
+  return dump_read_uint32(dump, (uint32_t *) n);
+}
+
+err_t dump_read_int64(struct dump *dump, int64_t *n) {
+  return dump_read_uint64(dump, (uint64_t *) n);
+}
+
+err_t dump_read_float32(struct dump *dump, float *x) {
+  assert(x != NULL);
+  uint32_t n;
+  err_t res = dump_read_uint32(dump, &n);
+  if (res != E_OK) return E_ERR;
+  memcpy(x, &n, 4);  // to pease c aliasing rules
+  return E_OK;
+}
+
+err_t dump_read_float64(struct dump *dump, double *x) {
+  assert(x != NULL);
+  uint64_t n;
+  err_t res = dump_read_uint64(dump, &n);
+  if (res != E_OK) return E_ERR;
+  memcpy(x, &n, 8);  // to pease c aliasing rules
+  return E_OK;
+}
+
+err_t dump_read_date(struct dump *dump, struct date *date) {
+  assert(date != NULL);
+  if (dump_read_uint16(dump, &date->year) != E_OK) goto error;
+  if (dump_read_uint16(dump, &date->day) != E_OK) goto error;
+  return E_OK;
+error:
+  errmsg_prefix("dump_read_uint16: ");
   return E_ERR;
 }

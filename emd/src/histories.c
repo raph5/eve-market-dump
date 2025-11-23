@@ -378,3 +378,98 @@ err_t dump_write_history_bit_vec(struct dump *dump,
   }
   return E_OK;
 }
+
+// write the date, then a table of (market, stats)
+err_t dump_write_history_dump(struct dump *dump, struct date date,
+                              struct history_bit_vec *history_bit_vec) {
+  assert(history_bit_vec != NULL);
+  if (dump_write_date(dump, date) != E_OK) {
+    errmsg_prefix("dump_write_date: ");
+    return E_ERR;
+  }
+  if (dump_write_uint64(dump, history_bit_vec->len) != E_OK) {
+    errmsg_prefix("dump_write_uint64: ");
+    return E_ERR;
+  }
+  for (size_t i = 0; i < history_bit_vec->len; ++i) {
+    if (dump_write_history_market(dump, &history_bit_vec->buf[i].market) != E_OK) {
+      errmsg_prefix("dump_write_history_market: ");
+      return E_ERR;
+    }
+    if (dump_write_history_stats(dump, &history_bit_vec->buf[i].stats) != E_OK) {
+      errmsg_prefix("dump_write_history_stats: ");
+      return E_ERR;
+    }
+  }
+  return E_OK;
+}
+
+err_t dump_read_history_market(struct dump *dump,
+                               struct history_market *market) {
+  assert(market != NULL);
+  if (dump_read_uint64(dump, &market->region_id) != E_OK) goto error;
+  if (dump_read_uint64(dump, &market->type_id) != E_OK) goto error;
+  return E_OK;
+
+error:
+  errmsg_prefix("dump_read_uint64: ");
+  return E_ERR;
+}
+
+err_t dump_read_history_stats(struct dump *dump,
+                              struct history_stats *stats) {
+  assert(stats != NULL);
+  if (dump_read_float64(dump, &stats->average) != E_OK) goto error;
+  if (dump_read_float64(dump, &stats->highest) != E_OK) goto error;
+  if (dump_read_float64(dump, &stats->lowest) != E_OK) goto error;
+  if (dump_read_uint64(dump, &stats->order_count) != E_OK) goto error;
+  if (dump_read_uint64(dump, &stats->volume) != E_OK) goto error;
+  return  E_OK;
+
+error:
+  errmsg_prefix("dump_read_uint64/float64: ");
+  return E_ERR;
+}
+
+err_t dump_read_history_bit(struct dump *dump, struct history_bit *bit) {
+  assert(bit != NULL);
+  if (dump_read_date(dump, &bit->date) != E_OK) {
+    errmsg_prefix("dump_read_date: ");
+    return E_ERR;
+  }
+  if (dump_read_history_market(dump, &bit->market) != E_OK) {
+    errmsg_prefix("dump_read_history_market: ");
+    return E_ERR;
+  }
+  if (dump_read_history_stats(dump, &bit->stats) != E_OK) {
+    errmsg_prefix("dump_read_history_stats: ");
+    return E_ERR;
+  }
+  return E_OK;
+}
+
+// read n `history_bit` (or less if eof) and push them to `history_bit_vec`
+err_t dump_read_history_bit_vec(struct dump *dump,
+                                struct history_bit_vec *history_bit_vec,
+                                size_t n) {
+  assert(history_bit_vec != NULL);
+  size_t history_bit_vec_initial_len = history_bit_vec->len;
+  for (size_t i = 0; i < n; ++i) {
+    struct history_bit history_bit;
+    err_t err = dump_read_history_bit(dump, &history_bit);
+    if (err == E_OK) {
+      err = history_bit_vec_push(history_bit_vec, history_bit);
+      if (err != E_OK) {
+        history_bit_vec->len = history_bit_vec_initial_len;
+        errmsg_prefix("history_bit_vec_push: ");
+        return E_ERR;
+      }
+    } else if (err == E_EOF) {
+      return E_EOF;
+    } else {
+      errmsg_prefix("dump_read_history_bit: ");
+      return E_ERR;
+    }
+  }
+  return E_OK;
+}

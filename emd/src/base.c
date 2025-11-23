@@ -238,6 +238,7 @@ int string_cmp(struct string a, struct string b) {
 typedef int err_t;
 const err_t E_OK = 0;
 const err_t E_ERR = 1;
+const err_t E_EOF = 2;
 
 #define THREAD_ERROR_LEN 8192
 __thread char thread_errmsg_buf[THREAD_ERROR_LEN + 1];

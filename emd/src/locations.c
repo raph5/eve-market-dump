@@ -1,10 +1,8 @@
 
 #include "stations.csv.h"
 
-const err_t E_LOC_BASE = 3000;
+const err_t E_LOC_BASE = 2000;
 const err_t E_LOC_FORBIDDEN = E_LOC_BASE + 1;
-
-// TODO: don't use a string pool
 
 // NOTE: returned locations name should be zeroed after use to avoid dangling
 // pointers
@@ -104,8 +102,8 @@ err_t loc_csv_read(struct csv_reader *rdr, struct loc *loc) {
   loc->system_id = (uint64_t) system_id;
 
   err_t err = csv_line_end(rdr);
-  if (err == E_CSV_EOF) {
-    return E_CSV_EOF;
+  if (err == E_EOF) {
+    return E_EOF;
   } else if (err != E_OK) {
     errmsg_prefix("csv_line_end: ");
     return E_ERR;
@@ -270,7 +268,7 @@ err_t loc_vec_load(struct loc_vec *loc_vec) {
   while (!eof) {
     struct loc loc = {0};
     err = loc_csv_read(&rdr, &loc);
-    if (err == E_CSV_EOF) {
+    if (err == E_EOF) {
       eof = true;
     } else if (err != E_OK) {
       errmsg_prefix("loc_csv_read: ");
