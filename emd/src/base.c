@@ -71,7 +71,7 @@ void _panic(const char *msg, int line, char *file) {
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
   global_cleanup();
-  exit(1);
+  kill(getpid(), SIGTERM);
 }
 
 void _assert(bool test, int line, char *file) {
@@ -84,14 +84,14 @@ void _assert(bool test, int line, char *file) {
   int len = backtrace(trace, 4096);
   backtrace_symbols_fd(trace, len, STDERR_FILENO);
   global_cleanup();
-  exit(1);
+  kill(getpid(), SIGTERM);
 }
 #else
 void _panic(const char *msg, int line, char *file) {
   fprintf(stderr, "\x1b[1;35mpanic:\x1b[0m file %s, line %d, %s\n", file, line,
           msg);
   global_cleanup();
-  exit(1);
+  kill(getpid(), SIGTERM);
 }
 
 void _assert(bool test, int line, char *file) {
@@ -100,7 +100,7 @@ void _assert(bool test, int line, char *file) {
   fprintf(stderr, "\x1b[1;35massertion failed:\x1b[0m file %s, line %d:\n",
           file, line);
   global_cleanup();
-  exit(1);
+  kill(getpid(), SIGTERM);
 }
 #endif
 

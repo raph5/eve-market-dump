@@ -73,33 +73,10 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   return E_OK;
 }
 
-volatile sig_atomic_t got_sigint = 0;
-void handle_sigint(int _) {
-  got_sigint = 1;
-}
-
 err_t global_init(void) {
-  sigset_t sigset;
-  sigemptyset(&sigset);
-  struct sigaction action = {
-    .sa_handler = handle_sigint,
-    .sa_mask = sigset,
-    .sa_flags = 0,
-  };
-  int rv = sigaction(SIGINT, &action, NULL);
-  if (rv != 0) {
-    errmsg_fmt("sigaction: %s", strerror(errno));
-    return E_ERR;
-  }
-  rv = sigaction(SIGTERM, &action, NULL);
-  if (rv != 0) {
-    errmsg_fmt("sigaction: %s", strerror(errno));
-    return E_ERR;
-  }
-
   CURLcode crv = curl_global_init(CURL_GLOBAL_ALL);
   if (crv != CURLE_OK) {
-    errmsg_fmt("curl_global_init: error %d", (int) rv);
+    errmsg_fmt("curl_global_init: error %d", (int) crv);
     return E_ERR;
   }
   err_t err = timezone_set("GMT");
@@ -153,22 +130,24 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // start hoardling threads
+  // first block sigint and sigterm so worker threads inherit from that sigmask
+  sigset_t blocker_mask;
+  sigemptyset(&blocker_mask);
+  sigaddset(&blocker_mask, SIGINT);
+  sigaddset(&blocker_mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &blocker_mask, NULL);
+
   pthread_attr_t attr;
-  int rv = pthread_attr_init(&attr);
-  if (rv != 0) {
-    errmsg_fmt("pthread_attr_init: %s", strerror(errno));
-    errmsg_print();
-    return 1;
-  }
+  pthread_attr_init(&attr);
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
+  // start worker threads
   pthread_t hoardling_locations_thread;
   struct hoardling_locations_args hoardling_locations_args = {
     .dump_dir = args.dump_dir,
     .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
+  int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
                       &hoardling_locations_args);
   if (rv != 0) {
     errmsg_fmt("pthread_create: %s", strerror(errno));
@@ -189,25 +168,28 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // non-busy wait for `got_sigint`
-  // first block sigint and sigterm
-  sigset_t blocker_mask, old_mask;
-  sigemptyset(&blocker_mask);
-  sigaddset(&blocker_mask, SIGINT);
-  sigaddset(&blocker_mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &blocker_mask, &old_mask);
-  while (!got_sigint) {
-    // then unblock sigint and sigterm inside sigsuspend
-    // see: https://stackoverflow.com/questions/6328055/whats-the-problem-of-pause-at-all
-    sigsuspend(&old_mask);
+  pthread_t hoardling_histories_thread;
+  struct hoardling_histories_args hoardling_histories_args = {
+    .dump_dir = args.dump_dir,
+  };
+  rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
+                      &hoardling_histories_args);
+  if (rv != 0) {
+    errmsg_fmt("pthread_create: %s", strerror(errno));
+    errmsg_print();
+    return 1;
   }
-  // note that for sigint and sigterm are still blocked
+
+  sigwait(&blocker_mask, NULL);
+  // note that here sigint and sigterm are still blocked
   // I could unblock them but I don't realy need to
 
   rv = pthread_kill(hoardling_locations_thread, SIGTERM);
   if (rv != 0) log_error("locations hoardling thread kill failed: %s", strerror(errno));
   rv = pthread_kill(hoardling_orders_thread, SIGTERM);
   if (rv != 0) log_error("orders hoardling thread kill failed: %s", strerror(errno));
+  rv = pthread_kill(hoardling_histories_thread, SIGTERM);
+  if (rv != 0) log_error("histories hoardling thread kill failed: %s", strerror(errno));
   global_cleanup();
   log_print("graceful exit");
   return 0;

@@ -114,7 +114,7 @@ cleanup:
   errmsg_prefix("hoardling_locations: ");
   errmsg_print();
 
-  exit(1);
+  kill(getpid(), SIGTERM);
   return NULL;
 }
 
@@ -211,7 +211,7 @@ cleanup:
   errmsg_prefix("hoardling_orders: ");
   errmsg_print();
 
-  exit(1);
+  kill(getpid(), SIGTERM);
   return NULL;
 }
 
@@ -370,6 +370,6 @@ cleanup:
   errmsg_prefix("hoardling_histories: ");
   errmsg_print();
 
-  exit(1);
+  kill(getpid(), SIGTERM);
   return NULL;
 }
