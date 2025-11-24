@@ -22,4 +22,5 @@ test: $(TEST) $(DEPS)
 	./$(TARGET)_test
 
 clean:
-	rm $(TARGET)
+	rm $(TARGET) $(TARGET)_test
+	rm -r $(TARGET).dSYM $(TARGET)_test.dSYM

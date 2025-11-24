@@ -104,7 +104,7 @@ void *hoardling_locations(void *args_ptr) {
         errmsg_print();
         continue;
       }
-      log_error("locations hoardling: new location dump at %.*s",
+      log_print("locations hoardling: new location dump at %.*s",
                 (int) dump_path.len, dump_path.buf);
     }
   }
@@ -184,7 +184,7 @@ void *hoardling_orders(void *args_ptr) {
       errmsg_print();
       continue;
     }
-    log_error("orders hoardling: new order dump at %.*s", (int) dump_path.len,
+    log_print("orders hoardling: new order dump at %.*s", (int) dump_path.len,
               dump_path.buf);
 
     struct uint64_vec locid_vec;
@@ -269,10 +269,10 @@ void *hoardling_histories(void *args_ptr) {
     if (bit_vec.len > 0) {
       struct date history_first_day = bit_vec.buf[0].date;
       struct date history_last_day = bit_vec.buf[bit_vec.len-1].date;
-      if (date_is_before(history_first_day, first_day)) {
+      if (first_day.year == 0 || date_is_before(history_first_day, first_day)) {
         first_day = history_first_day;
       }
-      if (date_is_after(history_last_day, last_day)) {
+      if (last_day.year == 0 || date_is_after(history_last_day, last_day)) {
         last_day = history_last_day;
       }
 
@@ -283,7 +283,11 @@ void *hoardling_histories(void *args_ptr) {
       }
     }
   }
-  assert(first_day.year != 0 && last_day.year != 0);
+
+  if (first_day.year == 0 || last_day.year == 0) {
+    // TODO:
+    panic("TODO");
+  }
 
   err = dump_close_write(&snapshot_dump);
   if (err != E_OK) {
@@ -301,6 +305,11 @@ void *hoardling_histories(void *args_ptr) {
        date_is_before(date, last_day) || date_is_equal(date, last_day);
        date_incr(&date)) {
     bit_vec.len = 0;
+    err = dump_seek_start(&snapshot_dump);
+    if (err != E_OK) {
+      errmsg_prefix("dump_seek_start: ");
+      goto cleanup;
+    }
 
     bool eof = false;
     while (!eof) {
@@ -315,6 +324,7 @@ void *hoardling_histories(void *args_ptr) {
 
       for (size_t i = 0; i < bit_chunk.len; ++i) {
         if (date_is_equal(date, bit_chunk.buf[i].date)) {
+          log_print("date match: (%" PRIu64 ", %" PRIu64 ")", bit_chunk.buf[i].date.year, bit_chunk.buf[i].date.day);
           err = history_bit_vec_push(&bit_vec, bit_chunk.buf[i]);
           if (err != E_OK) {
             errmsg_prefix("history_bit_vec_push: ");
@@ -355,7 +365,7 @@ void *hoardling_histories(void *args_ptr) {
       errmsg_print();
       goto cleanup;
     }
-    log_error("histories hoardling: new history dump at %.*s",
+    log_print("histories hoardling: new history dump at %.*s",
               (int) dump_path.len, dump_path.buf);
   }
 

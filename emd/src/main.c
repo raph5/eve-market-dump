@@ -142,37 +142,37 @@ int main(int argc, char *argv[]) {
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
   // start worker threads
-  pthread_t hoardling_locations_thread;
-  struct hoardling_locations_args hoardling_locations_args = {
-    .dump_dir = args.dump_dir,
-    .chan_orders_to_locations = &chan_orders_to_locations,
-  };
-  int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
-                      &hoardling_locations_args);
-  if (rv != 0) {
-    errmsg_fmt("pthread_create: %s", strerror(errno));
-    errmsg_print();
-    return 1;
-  }
+  /* pthread_t hoardling_locations_thread; */
+  /* struct hoardling_locations_args hoardling_locations_args = { */
+  /*   .dump_dir = args.dump_dir, */
+  /*   .chan_orders_to_locations = &chan_orders_to_locations, */
+  /* }; */
+  /* int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations, */
+  /*                     &hoardling_locations_args); */
+  /* if (rv != 0) { */
+  /*   errmsg_fmt("pthread_create: %s", strerror(errno)); */
+  /*   errmsg_print(); */
+  /*   return 1; */
+  /* } */
 
-  pthread_t hoardling_orders_thread;
-  struct hoardling_orders_args hoardling_orders_args = {
-    .dump_dir = args.dump_dir,
-    .chan_orders_to_locations = &chan_orders_to_locations,
-  };
-  rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
-                      &hoardling_orders_args);
-  if (rv != 0) {
-    errmsg_fmt("pthread_create: %s", strerror(errno));
-    errmsg_print();
-    return 1;
-  }
+  /* pthread_t hoardling_orders_thread; */
+  /* struct hoardling_orders_args hoardling_orders_args = { */
+  /*   .dump_dir = args.dump_dir, */
+  /*   .chan_orders_to_locations = &chan_orders_to_locations, */
+  /* }; */
+  /* rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders, */
+  /*                     &hoardling_orders_args); */
+  /* if (rv != 0) { */
+  /*   errmsg_fmt("pthread_create: %s", strerror(errno)); */
+  /*   errmsg_print(); */
+  /*   return 1; */
+  /* } */
 
   pthread_t hoardling_histories_thread;
   struct hoardling_histories_args hoardling_histories_args = {
     .dump_dir = args.dump_dir,
   };
-  rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
+  int rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
                       &hoardling_histories_args);
   if (rv != 0) {
     errmsg_fmt("pthread_create: %s", strerror(errno));
@@ -184,12 +184,12 @@ int main(int argc, char *argv[]) {
   // note that here sigint and sigterm are still blocked
   // I could unblock them but I don't realy need to
 
-  rv = pthread_kill(hoardling_locations_thread, SIGTERM);
-  if (rv != 0) log_error("locations hoardling thread kill failed: %s", strerror(errno));
-  rv = pthread_kill(hoardling_orders_thread, SIGTERM);
-  if (rv != 0) log_error("orders hoardling thread kill failed: %s", strerror(errno));
+  /* rv = pthread_kill(hoardling_locations_thread, SIGTERM); */
+  /* if (rv != 0 && rv != ESRCH) log_error("locations hoardling thread kill failed: %s", strerror(errno)); */
+  /* rv = pthread_kill(hoardling_orders_thread, SIGTERM); */
+  /* if (rv != 0 && rv != ESRCH) log_error("orders hoardling thread kill failed: %s", strerror(errno)); */
   rv = pthread_kill(hoardling_histories_thread, SIGTERM);
-  if (rv != 0) log_error("histories hoardling thread kill failed: %s", strerror(errno));
+  if (rv != 0 && rv != ESRCH) log_error("histories hoardling thread kill failed: %s", strerror(errno));
   global_cleanup();
   log_print("graceful exit");
   return 0;

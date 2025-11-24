@@ -141,6 +141,14 @@ void test_dump_record(void) {
   dump_record_burn();
 }
 
+void test_date_parse(void) {
+  struct date date;
+  err_t err = date_parse(ESI_DATE, "2024-11-23", &date);
+  assert(err == E_OK);
+  assert(date.year == 2024);
+  assert(date.day == 327);
+}
+
 // TODO: test checksum
 
 int main(void) {
@@ -149,6 +157,9 @@ int main(void) {
   // printf("---------- test_dump_record ----------\n");
   // test_dump_record();
 
+  printf("---------- test_date_parse ----------\n");
+  test_date_parse();
+  return 0;
   printf("---------- test_unsafe_ptr_fifo ----------\n");
   test_unsafe_ptr_fifo();
   printf("---------- test_ptr_fifo ----------\n");

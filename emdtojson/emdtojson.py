@@ -51,8 +51,8 @@ def unpack_order_table(file):
 
 def unpack_history_day(file):
     stats = []
-    year, day, stats_len = unpack("!HHQ", file)
-    for _ in range (stats_len):
+    year, day, len = unpack("!HHQ", file)
+    for _ in range (len):
         region_id, type_id, average, highest, lowest, order_count, volume = unpack("!QQdddQQ", file)
         stats.append({
             "region_id": region_id,

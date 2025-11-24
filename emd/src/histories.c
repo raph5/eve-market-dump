@@ -407,43 +407,38 @@ err_t dump_write_history_dump(struct dump *dump, struct date date,
 err_t dump_read_history_market(struct dump *dump,
                                struct history_market *market) {
   assert(market != NULL);
-  if (dump_read_uint64(dump, &market->region_id) != E_OK) goto error;
-  if (dump_read_uint64(dump, &market->type_id) != E_OK) goto error;
+  err_t err;
+  if ((err = dump_read_uint64(dump, &market->region_id)) != E_OK) return err;
+  if ((err = dump_read_uint64(dump, &market->type_id)) != E_OK) return err;
   return E_OK;
-
-error:
-  errmsg_prefix("dump_read_uint64: ");
-  return E_ERR;
 }
 
 err_t dump_read_history_stats(struct dump *dump,
                               struct history_stats *stats) {
   assert(stats != NULL);
-  if (dump_read_float64(dump, &stats->average) != E_OK) goto error;
-  if (dump_read_float64(dump, &stats->highest) != E_OK) goto error;
-  if (dump_read_float64(dump, &stats->lowest) != E_OK) goto error;
-  if (dump_read_uint64(dump, &stats->order_count) != E_OK) goto error;
-  if (dump_read_uint64(dump, &stats->volume) != E_OK) goto error;
+  err_t err;
+  if ((err = dump_read_float64(dump, &stats->average)) != E_OK) return err;
+  if ((err = dump_read_float64(dump, &stats->highest)) != E_OK) return err;
+  if ((err = dump_read_float64(dump, &stats->lowest)) != E_OK) return err;
+  if ((err = dump_read_uint64(dump, &stats->order_count)) != E_OK) return err;
+  if ((err = dump_read_uint64(dump, &stats->volume)) != E_OK) return err;
   return  E_OK;
-
-error:
-  errmsg_prefix("dump_read_uint64/float64: ");
-  return E_ERR;
 }
 
 err_t dump_read_history_bit(struct dump *dump, struct history_bit *bit) {
   assert(bit != NULL);
-  if (dump_read_date(dump, &bit->date) != E_OK) {
+  err_t err;
+  if ((err = dump_read_date(dump, &bit->date)) != E_OK) {
     errmsg_prefix("dump_read_date: ");
-    return E_ERR;
+    return err;
   }
-  if (dump_read_history_market(dump, &bit->market) != E_OK) {
+  if ((err = dump_read_history_market(dump, &bit->market)) != E_OK) {
     errmsg_prefix("dump_read_history_market: ");
-    return E_ERR;
+    return err;
   }
-  if (dump_read_history_stats(dump, &bit->stats) != E_OK) {
+  if ((err = dump_read_history_stats(dump, &bit->stats)) != E_OK) {
     errmsg_prefix("dump_read_history_stats: ");
-    return E_ERR;
+    return err;
   }
   return E_OK;
 }

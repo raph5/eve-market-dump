@@ -222,6 +222,16 @@ err_t dump_close_read(struct dump *dump) {
   return E_OK;
 }
 
+err_t dump_seek_start(struct dump *dump) {
+  assert(dump != NULL);
+  int rv = fseek(dump->file, 46, SEEK_SET);  // seek the begin of the body
+  if (rv != 0) {
+    errmsg_fmt("fseek: %s", strerror(errno));
+    return E_ERR;
+  }
+  return E_OK;
+}
+
 err_t dump_write(struct dump *dump, const unsigned char *buf, size_t buf_len) {
   assert(dump != NULL);
   assert(dump->file != NULL);
@@ -340,6 +350,7 @@ err_t dump_read(struct dump *dump, unsigned char *buf, size_t buf_len) {
   size_t items = fread(buf, buf_len, 1, dump->file);
   if (items < 1) {
     if (feof(dump->file)) {
+      errmsg_fmt("fread: end of file");
       return E_EOF;
     } else {
       errmsg_fmt("fread: %s", strerror(errno));
@@ -354,10 +365,7 @@ err_t dump_read_uint8(struct dump *dump, uint8_t *n) {
   assert(n != NULL);
   unsigned char bytes[1] = {0};
   err_t err = dump_read(dump, bytes, 1);
-  if (err != E_OK) {
-    errmsg_prefix("dump_read: ");
-    return E_ERR;
-  }
+  if (err != E_OK) return err;
   *n = (uint8_t) bytes[0];
   return E_OK;
 }
@@ -366,10 +374,7 @@ err_t dump_read_uint16(struct dump *dump, uint16_t *n) {
   assert(n != NULL);
   unsigned char bytes[2] = {0};
   err_t err = dump_read(dump, bytes, 2);
-  if (err != E_OK) {
-    errmsg_prefix("dump_read: ");
-    return E_ERR;
-  }
+  if (err != E_OK) return err;
   *n = ((uint16_t) bytes[0] << 8) + (uint16_t) bytes[1];
   return E_OK;
 }
@@ -378,10 +383,7 @@ err_t dump_read_uint32(struct dump *dump, uint32_t *n) {
   assert(n != NULL);
   unsigned char bytes[4] = {0};
   err_t err = dump_read(dump, bytes, 4);
-  if (err != E_OK) {
-    errmsg_prefix("dump_read: ");
-    return E_ERR;
-  }
+  if (err != E_OK) return err;
   *n = ((uint32_t) bytes[0] << 24) + ((uint32_t) bytes[1] << 16) + \
        ((uint32_t) bytes[2] << 8) + (uint32_t) bytes[3];
   return E_OK;
@@ -391,10 +393,7 @@ err_t dump_read_uint64(struct dump *dump, uint64_t *n) {
   assert(n != NULL);
   unsigned char bytes[8] = {0};
   err_t err = dump_read(dump, bytes, 8);
-  if (err != E_OK) {
-    errmsg_prefix("dump_read: ");
-    return E_ERR;
-  }
+  if (err != E_OK) return err;
   *n = ((uint64_t) bytes[0] << 56) + ((uint64_t) bytes[1] << 48) + \
        ((uint64_t) bytes[2] << 40) + ((uint64_t) bytes[3] << 32) + \
        ((uint64_t) bytes[4] << 24) + ((uint64_t) bytes[5] << 16) + \
@@ -438,10 +437,8 @@ err_t dump_read_float64(struct dump *dump, double *x) {
 
 err_t dump_read_date(struct dump *dump, struct date *date) {
   assert(date != NULL);
-  if (dump_read_uint16(dump, &date->year) != E_OK) goto error;
-  if (dump_read_uint16(dump, &date->day) != E_OK) goto error;
+  err_t res;
+  if ((res = dump_read_uint16(dump, &date->year)) != E_OK) return res;
+  if ((res = dump_read_uint16(dump, &date->day)) != E_OK) return res;
   return E_OK;
-error:
-  errmsg_prefix("dump_read_uint16: ");
-  return E_ERR;
 }
