@@ -468,3 +468,4 @@ err_t dump_read_history_bit_vec(struct dump *dump,
   }
   return E_OK;
 }
+

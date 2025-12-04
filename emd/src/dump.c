@@ -1,4 +1,6 @@
 
+#define DUMP_PATH_LEN_MAX 4096
+
 const uint8_t DUMP_VERSION       = 1;
 const char    DUMP_ASCII_ART[32] = "இ}ڿڰۣ-ڰۣ~—";
 
@@ -92,9 +94,8 @@ err_t dump_open_write(struct dump *dump, struct string path, uint8_t type,
                       time_t expiration) {
   assert(dump != NULL);
 
-  const size_t PATH_LEN_MAX = 2048;
-  char path_nt[PATH_LEN_MAX];
-  string_null_terminate(path, path_nt, PATH_LEN_MAX);
+  char path_nt[DUMP_PATH_LEN_MAX];
+  string_null_terminate(path, path_nt, DUMP_PATH_LEN_MAX);
   FILE *file = fopen(path_nt, "w");
   if (file == NULL) {
     errmsg_fmt("fopen: %s", strerror(errno));
@@ -184,9 +185,8 @@ err_t dump_close_write(struct dump *dump) {
 err_t dump_open_read(struct dump *dump, struct string path) {
   assert(dump != NULL);
 
-  const size_t PATH_LEN_MAX = 2048;
-  char path_nt[PATH_LEN_MAX];
-  string_null_terminate(path, path_nt, PATH_LEN_MAX);
+  char path_nt[DUMP_PATH_LEN_MAX];
+  string_null_terminate(path, path_nt, DUMP_PATH_LEN_MAX);
   FILE *file = fopen(path_nt, "r");
   if (file == NULL) {
     errmsg_fmt("fopen: %s", strerror(errno));
@@ -230,6 +230,18 @@ err_t dump_seek_start(struct dump *dump) {
     return E_ERR;
   }
   return E_OK;
+}
+
+bool dump_does_exist(struct string path) {
+  char *path_nt = NULL;
+  err_t err = string_alloc_null_terminated_cpy(&path_nt, path);
+  if (err != E_OK) {
+    errmsg_prefix("string_alloc_null_terminated_cpy: ");
+  }
+  
+  int rv = access(path_nt, R_OK);
+  free(path_nt);
+  return rv == 0;
 }
 
 err_t dump_write(struct dump *dump, const unsigned char *buf, size_t buf_len) {

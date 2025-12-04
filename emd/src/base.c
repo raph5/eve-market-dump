@@ -806,6 +806,7 @@ err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
 /******************************************************************************
  * time and date                                                              *
  ******************************************************************************/
+const time_t TIME_DAY = 60 * 60 * 24;
 err_t timezone_set(const char *tz) {
   int rv = setenv("TZ", tz, 1);
   if (rv != 0) {
@@ -826,12 +827,33 @@ err_t time_parse(const char *format, const char *str, time_t *time) {
     errmsg_fmt("strptime: invalid date format");
     return E_ERR;
   }
-  *time = mktime(&tm);
+  *time = mktime(&tm);  // timezone_set("GMT") must be call beforehand
   if (*time == (time_t) -1) {
     errmsg_fmt("mktime: %s", strerror(errno));
     return E_ERR;
   }
   return E_OK;
+}
+
+time_t time_eleven_fifteen_today(time_t now) {
+  struct tm tm;
+  struct tm *rv = gmtime_r(&now, &tm);
+  assert(rv != NULL);
+  tm.tm_sec = 0;
+  tm.tm_min = 15;
+  tm.tm_hour = 11;
+  return mktime(&tm);  // timezone_set("GMT") must be call beforehand
+}
+
+time_t time_eleven_fifteen_tomorrow(time_t now) {
+  struct tm tm;
+  struct tm *rv = gmtime_r(&now, &tm);
+  assert(rv != NULL);
+  tm.tm_sec = 0;
+  tm.tm_min = 15;
+  tm.tm_hour = 11;
+  tm.tm_mday += 1;  // mday will be normalized by `timegm`
+  return mktime(&tm);  // timezone_set("GMT") must be call beforehand
 }
 
 struct date {
@@ -890,6 +912,18 @@ void date_incr(struct date *date) {
   } else {
     date->day += 1;
   }
+}
+
+struct date date_utc(time_t time) {
+  struct tm tm = {0};
+  struct tm *res = gmtime_r(&time, &tm);
+  if (res == NULL) {
+    panic("gmtime_r returned an error");
+  }
+  return (struct date) {
+    .year = tm.tm_year + 1900,
+    .day = tm.tm_yday + 1,
+  };
 }
 
 /******************************************************************************

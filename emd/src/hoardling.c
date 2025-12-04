@@ -75,12 +75,9 @@ void *hoardling_locations(void *args_ptr) {
 
     if (new_loc_info) {
       time_t now = time(NULL);
-      const size_t DUMP_PATH_LEN_MAX = 2048;
       char dump_path_buf[DUMP_PATH_LEN_MAX];
-      struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
-                                           "%.*s/loc-%" PRIu64 ".dump",
-                                           (int) args.dump_dir.len,
-                                           args.dump_dir.buf, now);
+      struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/loc-%" PRIu64 ".dump",
+                                           (int) args.dump_dir.len, args.dump_dir.buf, now);
 
       struct dump dump;
       err = dump_open_write(&dump, dump_path, DUMP_TYPE_LOCATIONS, time(NULL));
@@ -155,12 +152,9 @@ void *hoardling_orders(void *args_ptr) {
       continue;
     }
 
-    const size_t DUMP_PATH_LEN_MAX = 2048;
     char dump_path_buf[DUMP_PATH_LEN_MAX];
-    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
-                                         "%.*s/orders-%" PRIu64 ".dump",
-                                         (int) args.dump_dir.len,
-                                         args.dump_dir.buf, now);
+    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/orders-%" PRIu64 ".dump",
+                                         (int) args.dump_dir.len, args.dump_dir.buf, now);
 
     struct dump dump;
     err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
@@ -219,113 +213,220 @@ struct hoardling_histories_args {
   struct string dump_dir;
 };
 
+// TODO: add resilience
 void *hoardling_histories(void *args_ptr) {
   assert(args_ptr != NULL);
   struct hoardling_histories_args args = *(struct hoardling_histories_args *) args_ptr;
 
-  // TODO: wrap hoardling_histories body into a while loop
-  // TODO: add resilience
+  char dump_path_buf[DUMP_PATH_LEN_MAX];
 
-  // Initial history fetch example
+  time_t now = time(NULL);
+  time_t eleven_fifteen_today = time_eleven_fifteen_today(now);
+  // time_t eleven_fifteen_tomorrow = time_eleven_fifteen_tomorrow(now);
+  // time_t expiration = now < eleven_fifteen_today ? eleven_fifteen_today : eleven_fifteen_tomorrow;
+  time_t expiration = now;
 
-  // TODO: request active_markets instead
-  uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
-  size_t ids_count = sizeof(ids) / sizeof(*ids);
-  struct history_market_vec market_vec = { .cap = ids_count };
-  for (size_t i = 0; i < ids_count; ++i) {
-    struct history_market market = {
-      .region_id = 10000002,
-      .type_id = ids[i],
-    };
-    err_t err = history_market_vec_push(&market_vec, market);
-    if (err != E_OK) {
-      errmsg_prefix("history_market_vec_push: ");
-      goto cleanup;
-    }
-  }
+  // In some cases this date might be day preceding the last dump but this does
+  // not realy mater
+  // struct date date_last_dump = date_utc(now - 2*TIME_DAY);
+  // struct string last_dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+  //                                           (int) args.dump_dir.len, args.dump_dir.buf, date_last_dump.year, date_last_dump.day);
+  // bool is_initial_download_needed = !dump_does_exist(last_dump_path);
+  bool is_initial_download_needed = false;
 
-  struct dump snapshot_dump;
-  struct string snapshot_dump_path = string_new("/tmp/emd_snapshot_dump");
-  err_t err = dump_open_write(&snapshot_dump, snapshot_dump_path,
-                              DUMP_TYPE_INTERNAL, 0);
-  if (err != E_OK) {
-    errmsg_prefix("dump_open_write: ");
-    goto cleanup;
-  }
-
-  struct date first_day = {0};
-  struct date last_day = {0};
-  struct history_bit_vec bit_vec = { .cap = 512 };
-  for (size_t i = 0; i < market_vec.len; ++i) {
-    struct history_market market = market_vec.buf[i];
-    bit_vec.len = 0;
-
-    err = history_download(&bit_vec, market);
-    if (err != E_OK) {
-      errmsg_prefix("histroy_download: ");
-      goto cleanup;
-    }
-
-    if (bit_vec.len > 0) {
-      struct date history_first_day = bit_vec.buf[0].date;
-      struct date history_last_day = bit_vec.buf[bit_vec.len-1].date;
-      if (first_day.year == 0 || date_is_before(history_first_day, first_day)) {
-        first_day = history_first_day;
-      }
-      if (last_day.year == 0 || date_is_after(history_last_day, last_day)) {
-        last_day = history_last_day;
-      }
-
-      err = dump_write_history_bit_vec(&snapshot_dump, &bit_vec);
+  if (is_initial_download_needed) {
+    // TODO: request active_markets instead
+    uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
+    size_t ids_count = sizeof(ids) / sizeof(*ids);
+    struct history_market_vec market_vec = { .cap = ids_count };
+    for (size_t i = 0; i < ids_count; ++i) {
+      struct history_market market = {
+        .region_id = 10000002,
+        .type_id = ids[i],
+      };
+      err_t err = history_market_vec_push(&market_vec, market);
       if (err != E_OK) {
-        errmsg_prefix("dump_write_history_bit_vec: ");
+        errmsg_prefix("history_market_vec_push: ");
         goto cleanup;
       }
     }
-  }
 
-  if (first_day.year == 0 || last_day.year == 0) {
-    // TODO:
-    panic("TODO");
-  }
-
-  err = dump_close_write(&snapshot_dump);
-  if (err != E_OK) {
-    errmsg_prefix("dump_close_write: ");
-    goto cleanup;
-  }
-  err = dump_open_read(&snapshot_dump, snapshot_dump_path);
-  if (err != E_OK) {
-    errmsg_prefix("dump_open_read: ");
-    goto cleanup;
-  }
-
-  struct history_bit_vec bit_chunk = { .cap = 10000 };
-  for (struct date date = first_day;
-       date_is_before(date, last_day) || date_is_equal(date, last_day);
-       date_incr(&date)) {
-    bit_vec.len = 0;
-    err = dump_seek_start(&snapshot_dump);
+    struct dump snapshot_dump;
+    struct string snapshot_dump_path = string_new("/tmp/emd_snapshot_dump");
+    err_t err = dump_open_write(&snapshot_dump, snapshot_dump_path,
+                                DUMP_TYPE_INTERNAL, 0);
     if (err != E_OK) {
-      errmsg_prefix("dump_seek_start: ");
+      errmsg_prefix("dump_open_write: ");
       goto cleanup;
     }
 
-    bool eof = false;
-    while (!eof) {
-      bit_chunk.len = 0;
-      err = dump_read_history_bit_vec(&snapshot_dump, &bit_chunk, 10000);
-      if (err == E_EOF) {
-        eof = true;
-      } else if (err != E_OK) {
-        errmsg_prefix("dump_read_history_bit_vec: ");
+    struct date first_day = {0};
+    struct date last_day = {0};
+    struct history_bit_vec bit_vec = { .cap = 512 };
+    for (size_t i = 0; i < market_vec.len; ++i) {
+      struct history_market market = market_vec.buf[i];
+      bit_vec.len = 0;
+
+      err = history_download(&bit_vec, market);
+      if (err != E_OK) {
+        errmsg_prefix("histroy_download: ");
         goto cleanup;
       }
 
-      for (size_t i = 0; i < bit_chunk.len; ++i) {
-        if (date_is_equal(date, bit_chunk.buf[i].date)) {
-          log_print("date match: (%" PRIu64 ", %" PRIu64 ")", bit_chunk.buf[i].date.year, bit_chunk.buf[i].date.day);
-          err = history_bit_vec_push(&bit_vec, bit_chunk.buf[i]);
+      if (bit_vec.len > 0) {
+        struct date history_first_day = bit_vec.buf[0].date;
+        struct date history_last_day = bit_vec.buf[bit_vec.len-1].date;
+        if (first_day.year == 0 || date_is_before(history_first_day, first_day)) {
+          first_day = history_first_day;
+        }
+        if (last_day.year == 0 || date_is_after(history_last_day, last_day)) {
+          last_day = history_last_day;
+        }
+
+        err = dump_write_history_bit_vec(&snapshot_dump, &bit_vec);
+        if (err != E_OK) {
+          errmsg_prefix("dump_write_history_bit_vec: ");
+          goto cleanup;
+        }
+      }
+    }
+
+    if (first_day.year == 0 || last_day.year == 0) {
+      // TODO:
+      panic("TODO");
+    }
+
+    err = dump_close_write(&snapshot_dump);
+    if (err != E_OK) {
+      errmsg_prefix("dump_close_write: ");
+      goto cleanup;
+    }
+    err = dump_open_read(&snapshot_dump, snapshot_dump_path);
+    if (err != E_OK) {
+      errmsg_prefix("dump_open_read: ");
+      goto cleanup;
+    }
+
+    struct history_bit_vec bit_chunk = { .cap = 10000 };
+    for (struct date date = first_day;
+         date_is_before(date, last_day) || date_is_equal(date, last_day);
+         date_incr(&date)) {
+      bit_vec.len = 0;
+      err = dump_seek_start(&snapshot_dump);
+      if (err != E_OK) {
+        errmsg_prefix("dump_seek_start: ");
+        goto cleanup;
+      }
+
+      bool eof = false;
+      while (!eof) {
+        bit_chunk.len = 0;
+        err = dump_read_history_bit_vec(&snapshot_dump, &bit_chunk, 10000);
+        if (err == E_EOF) {
+          eof = true;
+        } else if (err != E_OK) {
+          errmsg_prefix("dump_read_history_bit_vec: ");
+          goto cleanup;
+        }
+
+        for (size_t i = 0; i < bit_chunk.len; ++i) {
+          if (date_is_equal(date, bit_chunk.buf[i].date)) {
+            log_print("date match: (%" PRIu64 ", %" PRIu64 ")", bit_chunk.buf[i].date.year, bit_chunk.buf[i].date.day);
+            err = history_bit_vec_push(&bit_vec, bit_chunk.buf[i]);
+            if (err != E_OK) {
+              errmsg_prefix("history_bit_vec_push: ");
+              goto cleanup;
+            }
+          }
+        }
+      }
+
+      // dump it!
+      struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+                                                (int) args.dump_dir.len, args.dump_dir.buf, date.year, date.day);
+      struct dump dump;
+      if (dump_does_exist(dump_path)) {
+        //  TODO:
+        panic("TODO");
+      }
+      err = dump_open_write(&dump, dump_path, DUMP_TYPE_HISTORIES, 0);
+      if (err != E_OK) {
+        errmsg_prefix("dump_open_write: ");
+        log_error("histories hoardling: unable to emit history dump");
+        errmsg_print();
+        goto cleanup;
+      }
+      err = dump_write_history_dump(&dump, date, &bit_vec);
+      if (err != E_OK) {
+        errmsg_prefix("dump_write_order_table: ");
+        log_error("histories hoardling: unable to emit history dump");
+        errmsg_print();
+        goto cleanup;
+      }
+      err = dump_close_write(&dump);
+      if (err != E_OK) {
+        errmsg_prefix("dump_close_write: ");
+        log_error("histories hoardling: unable to emit history dump");
+        errmsg_print();
+        goto cleanup;
+      }
+      log_print("histories hoardling: new history dump at %.*s",
+                (int) dump_path.len, dump_path.buf);
+    }
+
+    err = dump_close_read(&snapshot_dump);
+    if (err != E_OK) {
+      errmsg_prefix("dump_close_read: ");
+      goto cleanup;
+    }
+
+    history_bit_vec_destroy(&bit_vec);
+    history_bit_vec_destroy(&bit_chunk);
+  }
+
+  while (1) {
+    time_t now = time(NULL);
+    if (now < expiration) {
+      log_print("histories hoardling: up to date");
+      sleep(expiration - now);
+      continue;
+    }
+
+    log_print("histories hoardling: downloading");
+
+    // TODO: request active_markets instead
+    uint64_t ids[] = { 601, 602, 603, 605, 606, 607, 608, 609, 615 };
+    size_t ids_count = sizeof(ids) / sizeof(*ids);
+    struct history_market_vec market_vec = { .cap = ids_count };
+    for (size_t i = 0; i < ids_count; ++i) {
+      struct history_market market = {
+        .region_id = 10000002,
+        .type_id = ids[i],
+      };
+      err_t err = history_market_vec_push(&market_vec, market);
+      if (err != E_OK) {
+        errmsg_prefix("history_market_vec_push: ");
+        goto cleanup;
+      }
+    }
+
+    struct date date = now < eleven_fifteen_today ? date_utc(now - 2*TIME_DAY) : date_utc(now - TIME_DAY);
+    struct history_bit_vec bit_vec = { .cap = 4096 };
+    struct history_bit_vec market_bit_vec = { .cap = 512 };
+    for (size_t i = 0; i < market_vec.len; ++i) {
+      struct history_market market = market_vec.buf[i];
+      market_bit_vec.len = 0;
+
+      err_t err = history_download(&market_bit_vec, market);
+      if (err != E_OK) {
+        errmsg_prefix("histroy_download: ");
+        goto cleanup;
+      }
+
+      // NOTE: this could be done quicker
+      for (size_t i = 0; i < market_bit_vec.len; ++i) {
+        if (date_is_equal(market_bit_vec.buf[i].date, date)) {
+          err = history_bit_vec_push(&bit_vec, market_bit_vec.buf[i]);
           if (err != E_OK) {
             errmsg_prefix("history_bit_vec_push: ");
             goto cleanup;
@@ -334,17 +435,15 @@ void *hoardling_histories(void *args_ptr) {
       }
     }
 
-    // dump it!
-    const size_t DUMP_PATH_LEN_MAX = 2048;
-    char dump_path_buf[DUMP_PATH_LEN_MAX];
-    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX,
-                                         "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
-                                         (int) args.dump_dir.len,
-                                         args.dump_dir.buf, date.year, date.day);
-
-    // TODO: set an expiration
+    // dump it like it's hot
+    struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+                                         (int) args.dump_dir.len, args.dump_dir.buf, date.year, date.day);
     struct dump dump;
-    err = dump_open_write(&dump, dump_path, DUMP_TYPE_HISTORIES, 0);
+    if (dump_does_exist(dump_path)) {
+      //  TODO:
+      panic("TODO");
+    }
+    err_t err = dump_open_write(&dump, dump_path, DUMP_TYPE_HISTORIES, expiration);
     if (err != E_OK) {
       errmsg_prefix("dump_open_write: ");
       log_error("histories hoardling: unable to emit history dump");
@@ -367,12 +466,10 @@ void *hoardling_histories(void *args_ptr) {
     }
     log_print("histories hoardling: new history dump at %.*s",
               (int) dump_path.len, dump_path.buf);
-  }
 
-  err = dump_close_read(&snapshot_dump);
-  if (err != E_OK) {
-    errmsg_prefix("dump_close_read: ");
-    goto cleanup;
+    expiration += TIME_DAY;
+    history_bit_vec_destroy(&market_bit_vec);
+    history_bit_vec_destroy(&bit_vec);
   }
 
 cleanup:

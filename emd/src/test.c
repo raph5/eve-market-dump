@@ -133,6 +133,7 @@ void test_ptr_fifo(void) {
   ptr_fifo_destroy(&fifo);
 }
 
+// manual test
 void test_dump_record(void) {
   struct dump dump;
   err_t err = dump_open_write(&dump, string_new("/tmp/dump_record_test"), 0, 0);
@@ -149,17 +150,11 @@ void test_date_parse(void) {
   assert(date.day == 327);
 }
 
-// TODO: test checksum
-
 int main(void) {
   printf("---------- TEST START ----------\n");
 
-  // printf("---------- test_dump_record ----------\n");
-  // test_dump_record();
-
   printf("---------- test_date_parse ----------\n");
   test_date_parse();
-  return 0;
   printf("---------- test_unsafe_ptr_fifo ----------\n");
   test_unsafe_ptr_fifo();
   printf("---------- test_ptr_fifo ----------\n");
