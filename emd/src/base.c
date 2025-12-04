@@ -922,7 +922,7 @@ struct date date_utc(time_t time) {
   }
   return (struct date) {
     .year = tm.tm_year + 1900,
-    .day = tm.tm_yday + 1,
+    .day = tm.tm_yday + 1,  // POSIX api is so weird
   };
 }
 

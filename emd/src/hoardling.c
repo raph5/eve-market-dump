@@ -222,17 +222,15 @@ void *hoardling_histories(void *args_ptr) {
 
   time_t now = time(NULL);
   time_t eleven_fifteen_today = time_eleven_fifteen_today(now);
-  // time_t eleven_fifteen_tomorrow = time_eleven_fifteen_tomorrow(now);
-  // time_t expiration = now < eleven_fifteen_today ? eleven_fifteen_today : eleven_fifteen_tomorrow;
-  time_t expiration = now;
+  time_t eleven_fifteen_tomorrow = time_eleven_fifteen_tomorrow(now);
+  time_t expiration = now < eleven_fifteen_today ? eleven_fifteen_today : eleven_fifteen_tomorrow;
 
   // In some cases this date might be day preceding the last dump but this does
   // not realy mater
-  // struct date date_last_dump = date_utc(now - 2*TIME_DAY);
-  // struct string last_dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
-  //                                           (int) args.dump_dir.len, args.dump_dir.buf, date_last_dump.year, date_last_dump.day);
-  // bool is_initial_download_needed = !dump_does_exist(last_dump_path);
-  bool is_initial_download_needed = false;
+  struct date date_last_dump = date_utc(now - 2*TIME_DAY);
+  struct string last_dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+                                            (int) args.dump_dir.len, args.dump_dir.buf, date_last_dump.year, date_last_dump.day);
+  bool is_initial_download_needed = !dump_does_exist(last_dump_path);
 
   if (is_initial_download_needed) {
     // TODO: request active_markets instead
@@ -410,6 +408,7 @@ void *hoardling_histories(void *args_ptr) {
       }
     }
 
+    // WARN: here we assume that every market is up to date at 11:15
     struct date date = now < eleven_fifteen_today ? date_utc(now - 2*TIME_DAY) : date_utc(now - TIME_DAY);
     struct history_bit_vec bit_vec = { .cap = 4096 };
     struct history_bit_vec market_bit_vec = { .cap = 512 };
