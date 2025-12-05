@@ -557,11 +557,11 @@ typedef pthread_mutex_t mutex_t;
 
 void mutex_lock(mutex_t *mu, time_t timeout_sec) {
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
-  struct timespec timeout = {
-    .tv_sec = timeout_sec,
-    .tv_nsec = 0,
-  };
-  int rv = pthread_mutex_timedlock(mu, &timeout);
+  struct timespec timeout;
+  int rv = timespec_get(&timeout, TIME_UTC);
+  timeout.tv_sec += timeout_sec;
+  assert(rv == 0);
+  rv = pthread_mutex_timedlock(mu, &timeout);
 #else
   int rv = pthread_mutex_lock(mu);
 #endif
@@ -734,7 +734,7 @@ err_t ptr_fifo_init(struct ptr_fifo *fifo, size_t cap) {
 }
 
 // ownership of buf is passed to fifo
-// if timeout_sec == 0, ptr_fifo_pop will not timeout
+// if timeout_sec == 0, ptr_fifo_push will not timeout
 err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
   assert(fifo != NULL);
   assert(fifo->unsafe.ptrs != NULL);
@@ -747,10 +747,10 @@ err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
   if (timeout_sec == 0) {
     rv = sem_wait(fifo->push);
   } else {
-    struct timespec timeout = {
-      .tv_sec = timeout_sec,
-      .tv_nsec = 0,
-    };
+    struct timespec timeout;
+    int rv = timespec_get(&timeout, TIME_UTC);
+    timeout.tv_sec += timeout_sec;
+    assert(rv == 0);
     rv = sem_timedwait(fifo->push, &timeout);
   }
 #else
@@ -782,10 +782,10 @@ err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
   if (timeout_sec == 0) {
     rv = sem_wait(fifo->pop);
   } else {
-    struct timespec timeout = {
-      .tv_sec = timeout_sec,
-      .tv_nsec = 0,
-    };
+    struct timespec timeout;
+    int rv = timespec_get(&timeout, TIME_UTC);
+    timeout.tv_sec += timeout_sec;
+    assert(rv == 0);
     rv = sem_timedwait(fifo->pop, &timeout);
   }
 #else
