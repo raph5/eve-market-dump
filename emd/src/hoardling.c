@@ -329,7 +329,6 @@ err_t hoardling_histories_request_active_markets(struct history_market_vec *mark
   return E_OK;
 }
 
-// TODO: add resilience
 void *hoardling_histories(void *args_ptr) {
   err_t err;
 
@@ -374,10 +373,20 @@ void *hoardling_histories(void *args_ptr) {
       struct history_market market = market_vec.buf[i];
       bit_vec.len = 0;
 
-      err = history_download(&bit_vec, market);
-      if (err != E_OK) {
-        errmsg_prefix("histroy_download: ");
-        goto cleanup;
+      int try = 1;
+      while (1) {
+        err = history_download(&bit_vec, market);
+        if (err == E_OK) {
+          break;
+        } else if (try <= 5) {
+          try += 1;
+          log_error("histories hoardling: history download failed, retrying in 10 minutes");
+          sleep(10 * TIME_MINUTE);
+        } else {
+          log_error("histories hoardling: history download failed, out of trails");
+          errmsg_prefix("history_download: ");
+          goto cleanup;
+        }
       }
 
       if (bit_vec.len > 0) {
@@ -502,10 +511,20 @@ void *hoardling_histories(void *args_ptr) {
       struct history_market market = market_vec.buf[i];
       market_bit_vec.len = 0;
 
-      err = history_download(&market_bit_vec, market);
-      if (err != E_OK) {
-        errmsg_prefix("histroy_download: ");
-        goto cleanup;
+      int try = 1;
+      while (1) {
+        err = history_download(&bit_vec, market);
+        if (err == E_OK) {
+          break;
+        } else if (try <= 5) {
+          try += 1;
+          log_error("histories hoardling: history download failed, retrying in 10 minutes");
+          sleep(10 * TIME_MINUTE);
+        } else {
+          log_error("histories hoardling: history download failed, out of trails");
+          errmsg_prefix("history_download: ");
+          goto cleanup;
+        }
       }
 
       // NOTE: this could be done quicker
