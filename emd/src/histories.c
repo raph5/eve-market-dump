@@ -297,6 +297,43 @@ cleanup:
   return res;
 }
 
+// market_vec should be initialized
+err_t order_fill_active_market_vec(struct history_market_vec *market_vec,
+                                   struct order_vec *order_vec) {
+  assert(market_vec != NULL);
+  assert(order_vec != NULL);
+
+  // TODO: remove
+  time_t debug_start = time(NULL);
+
+  for (size_t i = 0; i < order_vec->len; ++i) {
+    size_t j;
+    for (j = 0; j < market_vec->len; ++j) {
+      if (
+        market_vec->buf[j].region_id == order_vec->buf[i].region_id &&
+        market_vec->buf[j].type_id == order_vec->buf[i].type_id
+      ) break;
+    }
+    if (j >= market_vec->len) {
+      struct history_market market = {
+        .region_id = order_vec->buf[i].region_id,
+        .type_id = order_vec->buf[i].type_id,
+      };
+      err_t err = history_market_vec_push(market_vec, market);
+      if (err != E_OK) {
+        errmsg_prefix("history_market_vec_push: ");
+        return E_ERR;
+      }
+    }
+  }
+
+  // TODO: remove
+  time_t debug_end = time(NULL);
+  log_print("DEBUG: order_fill_location_id_vec duration %d", debug_end - debug_start);
+
+  return E_OK;
+}
+
 err_t dump_write_history_market(struct dump *dump,
                                 struct history_market *market) {
   assert(market != NULL);

@@ -105,29 +105,36 @@ int main(int argc, char *argv[]) {
   err_t err = global_init();
   if (err != E_OK) {
     errmsg_prefix("global_init: ");
-    errmsg_print();
-    return 1;
+    goto print_error_and_exit;
   }
 
   struct args args;
   err = args_parse(argc, argv, &args);
-  if (err != E_OK) {
-    return 1;
-  }
+  if (err != E_OK) return 1;
 
   err = secret_table_parse(args.secrets);
   if (err != E_OK) {
     errmsg_prefix("secret_table_parse: ");
-    errmsg_print();
-    return 1;
+    goto print_error_and_exit;
   }
 
   struct ptr_fifo chan_orders_to_locations = {0};
+  struct ptr_fifo active_market_request = {0};
+  struct ptr_fifo active_market_response = {0};
   err = ptr_fifo_init(&chan_orders_to_locations, 32);
   if (err != E_OK) {
     errmsg_prefix("ptr_fifo_init: ");
-    errmsg_print();
-    return 1;
+    goto print_error_and_exit;
+  }
+  err = ptr_fifo_init(&active_market_request, 32);
+  if (err != E_OK) {
+    errmsg_prefix("ptr_fifo_init: ");
+    goto print_error_and_exit;
+  }
+  err = ptr_fifo_init(&active_market_response, 32);
+  if (err != E_OK) {
+    errmsg_prefix("ptr_fifo_init: ");
+    goto print_error_and_exit;
   }
 
   // first block sigint and sigterm so worker threads inherit from that sigmask
@@ -142,55 +149,62 @@ int main(int argc, char *argv[]) {
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
   // start worker threads
-  /* pthread_t hoardling_locations_thread; */
-  /* struct hoardling_locations_args hoardling_locations_args = { */
-  /*   .dump_dir = args.dump_dir, */
-  /*   .chan_orders_to_locations = &chan_orders_to_locations, */
-  /* }; */
-  /* int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations, */
-  /*                     &hoardling_locations_args); */
-  /* if (rv != 0) { */
-  /*   errmsg_fmt("pthread_create: %s", strerror(errno)); */
-  /*   errmsg_print(); */
-  /*   return 1; */
-  /* } */
-
-  /* pthread_t hoardling_orders_thread; */
-  /* struct hoardling_orders_args hoardling_orders_args = { */
-  /*   .dump_dir = args.dump_dir, */
-  /*   .chan_orders_to_locations = &chan_orders_to_locations, */
-  /* }; */
-  /* rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders, */
-  /*                     &hoardling_orders_args); */
-  /* if (rv != 0) { */
-  /*   errmsg_fmt("pthread_create: %s", strerror(errno)); */
-  /*   errmsg_print(); */
-  /*   return 1; */
-  /* } */
-
-  pthread_t hoardling_histories_thread;
-  struct hoardling_histories_args hoardling_histories_args = {
+  pthread_t hoardling_locations_thread;
+  struct hoardling_locations_args hoardling_locations_args = {
     .dump_dir = args.dump_dir,
+    .chan_orders_to_locations = &chan_orders_to_locations,
   };
-  int rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
-                      &hoardling_histories_args);
+  int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
+                      &hoardling_locations_args);
   if (rv != 0) {
     errmsg_fmt("pthread_create: %s", strerror(errno));
     errmsg_print();
     return 1;
   }
 
+  pthread_t hoardling_orders_thread;
+  struct hoardling_orders_args hoardling_orders_args = {
+    .dump_dir = args.dump_dir,
+    .chan_orders_to_locations = &chan_orders_to_locations,
+    .active_market_request = &active_market_request,
+    .active_market_response = &active_market_response,
+  };
+  rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
+                      &hoardling_orders_args);
+  if (rv != 0) {
+    errmsg_fmt("pthread_create: %s", strerror(errno));
+    errmsg_print();
+    return 1;
+  }
+
+  pthread_t hoardling_histories_thread;
+  struct hoardling_histories_args hoardling_histories_args = {
+    .dump_dir = args.dump_dir,
+    .active_market_request = &active_market_request,
+    .active_market_response = &active_market_response,
+  };
+  rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
+                      &hoardling_histories_args);
+  if (rv != 0) {
+    errmsg_fmt("pthread_create: %s", strerror(errno));
+    goto print_error_and_exit;
+  }
+
   sigwait(&blocker_mask, NULL);
   // note that here sigint and sigterm are still blocked
   // I could unblock them but I don't realy need to
 
-  /* rv = pthread_kill(hoardling_locations_thread, SIGTERM); */
-  /* if (rv != 0 && rv != ESRCH) log_error("locations hoardling thread kill failed: %s", strerror(errno)); */
-  /* rv = pthread_kill(hoardling_orders_thread, SIGTERM); */
-  /* if (rv != 0 && rv != ESRCH) log_error("orders hoardling thread kill failed: %s", strerror(errno)); */
+  rv = pthread_kill(hoardling_locations_thread, SIGTERM);
+  if (rv != 0 && rv != ESRCH) log_error("locations hoardling thread kill failed: %s", strerror(errno));
+  rv = pthread_kill(hoardling_orders_thread, SIGTERM);
+  if (rv != 0 && rv != ESRCH) log_error("orders hoardling thread kill failed: %s", strerror(errno));
   rv = pthread_kill(hoardling_histories_thread, SIGTERM);
   if (rv != 0 && rv != ESRCH) log_error("histories hoardling thread kill failed: %s", strerror(errno));
   global_cleanup();
   log_print("graceful exit");
   return 0;
+
+print_error_and_exit:
+  errmsg_print();
+  return 1;
 }

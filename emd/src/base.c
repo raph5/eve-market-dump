@@ -239,6 +239,8 @@ typedef int err_t;
 const err_t E_OK = 0;
 const err_t E_ERR = 1;
 const err_t E_EOF = 2;
+const err_t E_EMPTY = 3;
+const err_t E_FULL = 4;
 
 #define THREAD_ERROR_LEN 8192
 __thread char thread_errmsg_buf[THREAD_ERROR_LEN + 1];
@@ -803,9 +805,33 @@ err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
   return E_OK;
 }
 
+// returns E_EMPTY if the fifo is empty
+err_t ptr_fifo_try_pop(struct ptr_fifo *fifo, void **ptr) {
+  assert(fifo != NULL);
+  assert(fifo->unsafe.ptrs != NULL);
+  assert(ptr != NULL);
+
+  int rv = sem_trywait(fifo->pop);
+  if (rv == EAGAIN) {
+    return E_EMPTY;
+  } else if (rv != E_OK) {
+    errmsg_fmt("sem_trywait: %s", strerror(errno));
+    return E_ERR;
+  }
+
+  mutex_lock(&fifo->mu, 3);
+  *ptr = unsafe_ptr_fifo_pop(&fifo->unsafe);
+  mutex_unlock(&fifo->mu);
+  rv = sem_post(fifo->push);
+  if (rv != 0) panic("should not happen");
+  return E_OK;
+}
+
 /******************************************************************************
  * time and date                                                              *
  ******************************************************************************/
+const time_t TIME_MINUTE = 60;
+const time_t TIME_HOUR = 60 * 60;
 const time_t TIME_DAY = 60 * 60 * 24;
 err_t timezone_set(const char *tz) {
   int rv = setenv("TZ", tz, 1);
