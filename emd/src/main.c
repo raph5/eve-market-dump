@@ -185,7 +185,8 @@ int main(int argc, char *argv[]) {
     goto print_error_and_exit;
   }
 
-  sigwait(&blocker_mask, NULL);
+  int sig;
+  sigwait(&blocker_mask, &sig);
   // note that here sigint and sigterm are still blocked
   // I could unblock them but I don't realy need to
 
