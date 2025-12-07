@@ -1042,3 +1042,19 @@ err_t serialize_string(FILE *stream, struct string s) {
   }
   return E_OK;
 }
+
+/******************************************************************************
+ * cli arguments                                                              *
+ ******************************************************************************/
+err_t asgs_prase_bool(bool *out, const char *in) {
+  assert(out != NULL);
+  if (strcmp(in, "1") == 0 || strcmp(in, "true") == 0 || strcmp(in, "True") == 0) {
+    *out = true;
+    return E_OK;
+  }
+  if (strcmp(in, "0") == 0 || strcmp(in, "false") == 0 || strcmp(in, "False") == 0) {
+    *out = false;
+    return E_OK;
+  }
+  return E_ERR;
+}

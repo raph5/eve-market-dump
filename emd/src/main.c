@@ -21,24 +21,34 @@ const char* MAN =
 "\n"
 "OPTIONS\n"
 "\t--secrets STRING\n"
-"\t\tjson string containing the secrets in foramt {key: value} (default \"{}\")\n"
+"\t\tJson string containing the secrets in foramt {key: value} (default \"{}\")\n"
 "\t--dump_dir STRING\n"
-"\t\tthe directory in which dumps will be created (default \".\")\n";
+"\t\tThe directory in which dumps will be created (default \".\")\n"
+"\t--history BOOLEAN\n"
+"\t\tEnable histories update (default true)\n"
+"\t--structure BOOLEAN\n"
+"\t\tEnable fetching of public player structures (requires ssoClientId, ssoClientSecret and ssoRefreshToken secrets) (default true)\n";
 
 struct args {
   struct string secrets;
   struct string dump_dir;
+  bool history;
+  bool structure;
 };
 
 err_t args_parse(int argc, char *argv[], struct args *args) {
   *args = (struct args) {
     .secrets = string_new("{}"),
     .dump_dir = string_new("."),
+    .history = true,
+    .structure = true,
   };
 
   struct option opt_table[] = {
     { .name = "secrets", .has_arg = required_argument },
     { .name = "dump_dir", .has_arg = required_argument },
+    { .name = "history", .has_arg = optional_argument },
+    { .name = "structure", .has_arg = optional_argument },
     { 0 },  // shitty api
   };
 
@@ -58,6 +68,18 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
         break;
       case 1:
         args->dump_dir = string_new(optarg);
+        break;
+      case 2:
+        if (asgs_prase_bool(&args->history, optarg) != E_OK) {
+          printf("--history takes a BOOLEAN value\n\n%s", MAN);
+          return E_ERR;
+        }
+        break;
+      case 3:
+        if (asgs_prase_bool(&args->structure, optarg) != E_OK) {
+          printf("--structure takes a BOOLEAN value\n\n%s", MAN);
+          return E_ERR;
+        }
         break;
       default:
         panic("unreachable");
@@ -144,27 +166,16 @@ int main(int argc, char *argv[]) {
   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
   // start worker threads
-  pthread_t hoardling_locations_thread;
-  struct hoardling_locations_args hoardling_locations_args = {
-    .dump_dir = args.dump_dir,
-    .chan_orders_to_locations = &chan_orders_to_locations,
-  };
-  int rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
-                      &hoardling_locations_args);
-  if (rv != 0) {
-    errmsg_fmt("pthread_create: %s", strerror(errno));
-    errmsg_print();
-    return 1;
-  }
-
   pthread_t hoardling_orders_thread;
   struct hoardling_orders_args hoardling_orders_args = {
     .dump_dir = args.dump_dir,
+    .history = args.history,
+    .structure = args.structure,
     .chan_orders_to_locations = &chan_orders_to_locations,
     .active_market_request = &active_market_request,
     .active_market_response = &active_market_response,
   };
-  rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
+  int rv = pthread_create(&hoardling_orders_thread, NULL, hoardling_orders,
                       &hoardling_orders_args);
   if (rv != 0) {
     errmsg_fmt("pthread_create: %s", strerror(errno));
@@ -172,17 +183,34 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  pthread_t hoardling_locations_thread;
+  if (args.structure) {
+    struct hoardling_locations_args hoardling_locations_args = {
+      .dump_dir = args.dump_dir,
+      .chan_orders_to_locations = &chan_orders_to_locations,
+    };
+    rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
+                        &hoardling_locations_args);
+    if (rv != 0) {
+      errmsg_fmt("pthread_create: %s", strerror(errno));
+      errmsg_print();
+      return 1;
+    }
+  }
+
   pthread_t hoardling_histories_thread;
-  struct hoardling_histories_args hoardling_histories_args = {
-    .dump_dir = args.dump_dir,
-    .active_market_request = &active_market_request,
-    .active_market_response = &active_market_response,
-  };
-  rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
-                      &hoardling_histories_args);
-  if (rv != 0) {
-    errmsg_fmt("pthread_create: %s", strerror(errno));
-    goto print_error_and_exit;
+  if (args.history) {
+    struct hoardling_histories_args hoardling_histories_args = {
+      .dump_dir = args.dump_dir,
+      .active_market_request = &active_market_request,
+      .active_market_response = &active_market_response,
+    };
+    rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
+                        &hoardling_histories_args);
+    if (rv != 0) {
+      errmsg_fmt("pthread_create: %s", strerror(errno));
+      goto print_error_and_exit;
+    }
   }
 
   int sig;
@@ -190,12 +218,17 @@ int main(int argc, char *argv[]) {
   // note that here sigint and sigterm are still blocked
   // I could unblock them but I don't realy need to
 
-  rv = pthread_kill(hoardling_locations_thread, SIGTERM);
-  if (rv != 0 && rv != ESRCH) log_error("locations hoardling thread kill failed: %s", strerror(errno));
   rv = pthread_kill(hoardling_orders_thread, SIGTERM);
   if (rv != 0 && rv != ESRCH) log_error("orders hoardling thread kill failed: %s", strerror(errno));
-  rv = pthread_kill(hoardling_histories_thread, SIGTERM);
-  if (rv != 0 && rv != ESRCH) log_error("histories hoardling thread kill failed: %s", strerror(errno));
+  if (args.structure) {
+    rv = pthread_kill(hoardling_locations_thread, SIGTERM);
+    if (rv != 0 && rv != ESRCH) log_error("locations hoardling thread kill failed: %s", strerror(errno));
+  }
+  if (args.history) {
+    rv = pthread_kill(hoardling_histories_thread, SIGTERM);
+    if (rv != 0 && rv != ESRCH) log_error("histories hoardling thread kill failed: %s", strerror(errno));
+  }
+
   global_cleanup();
   log_print("graceful exit");
   return 0;

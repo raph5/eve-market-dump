@@ -121,6 +121,8 @@ cleanup:
 
 struct hoardling_orders_args {
   struct string dump_dir;
+  bool history;
+  bool structure;
   struct ptr_fifo *chan_orders_to_locations;
   struct ptr_fifo *active_market_request;
   struct ptr_fifo *active_market_response;
@@ -240,21 +242,25 @@ void *hoardling_orders(void *args_ptr) {
       log_print("orders hoardling: new order dump");
     }
 
-    err = hoardling_orders_send_location_id_vec(&order_vec, args.active_market_request);
-    if (err != E_OK) {
-      log_error("orders hoardling: unable to locations id to locations hoardling");
-      errmsg_prefix("hoardling_orders_send_location_id_vec: ");
-      errmsg_print();
+    if (args.structure) {
+      err = hoardling_orders_send_location_id_vec(&order_vec, args.active_market_request);
+      if (err != E_OK) {
+        log_error("orders hoardling: unable to locations id to locations hoardling");
+        errmsg_prefix("hoardling_orders_send_location_id_vec: ");
+        errmsg_print();
+      }
     }
 
-    // response to active market requests from histories hoardling
-    err = hoardling_orders_respond_to_histories_hoardling(&order_vec,
-                                                          args.active_market_request,
-                                                          args.active_market_response);
-    if (err != E_OK) {
-      log_error("orders hoardling: unable to respond to histories hoardling");
-      errmsg_prefix("hoardling_orders_send_location_id_vec: ");
-      errmsg_print();
+    if (args.history) {
+      // response to active market requests from histories hoardling
+      err = hoardling_orders_respond_to_histories_hoardling(&order_vec,
+                                                            args.active_market_request,
+                                                            args.active_market_response);
+      if (err != E_OK) {
+        log_error("orders hoardling: unable to respond to histories hoardling");
+        errmsg_prefix("hoardling_orders_send_location_id_vec: ");
+        errmsg_print();
+      }
     }
 
     expiration = now + 60 * 5;
