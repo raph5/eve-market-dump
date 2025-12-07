@@ -134,7 +134,7 @@ err_t hoardling_orders_dump(struct string dump_dir, struct order_vec *order_vec,
                                        (int) dump_dir.len, dump_dir.buf, now);
 
   struct dump dump;
-  err_t err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 10);
+  err_t err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
   if (err != E_OK) {
     errmsg_prefix("dump_open_write: ");
     return E_ERR;
@@ -179,7 +179,9 @@ err_t hoardling_orders_respond_to_histories_hoardling(struct order_vec *order_ve
                                                       struct ptr_fifo *active_market_response) {
   struct history_market_vec *market_vec;
   err_t err = ptr_fifo_try_pop(active_market_request, (void **) &market_vec);
-  if (err != E_OK && err != E_EMPTY) {
+  if (err == E_EMPTY) {
+    return E_OK;
+  } else if (err != E_OK) {
     errmsg_prefix("ptr_fifo_try_pop: ");
     return E_ERR;
   }
