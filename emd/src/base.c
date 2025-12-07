@@ -814,7 +814,7 @@ err_t ptr_fifo_try_pop(struct ptr_fifo *fifo, void **ptr) {
   int rv = sem_trywait(fifo->pop);
   if (rv == EAGAIN) {
     return E_EMPTY;
-  } else if (rv != E_OK) {
+  } else if (rv != 0) {
     errmsg_fmt("sem_trywait: %s", strerror(errno));
     return E_ERR;
   }
