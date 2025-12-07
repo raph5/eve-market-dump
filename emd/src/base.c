@@ -241,6 +241,7 @@ const err_t E_ERR = 1;
 const err_t E_EOF = 2;
 const err_t E_EMPTY = 3;
 const err_t E_FULL = 4;
+const err_t E_NOT_FOUND = 5;
 
 #define THREAD_ERROR_LEN 8192
 __thread char thread_errmsg_buf[THREAD_ERROR_LEN + 1];

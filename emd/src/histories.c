@@ -280,7 +280,9 @@ err_t history_download(struct history_bit_vec *bit_vec,
   err_t err = esi_fetch(&response, string_new("GET"), uri, (struct string) {0},
                         false, 5);
   if (response.code == 400 || response.code == 404) {
-    // NOTE: I can maybe handle 404, 400 errors better
+    res = E_NOT_FOUND;
+    errmsg_fmt("history (%" PRIu64 ", %" PRIu64 ") not found", market.region_id, market.type_id);
+    goto cleanup;
   } else if (err != E_OK) {
     errmsg_prefix("esi_fetch: ");
     goto cleanup;
