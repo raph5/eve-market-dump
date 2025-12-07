@@ -558,7 +558,7 @@ typedef pthread_mutex_t mutex_t;
 void mutex_lock(mutex_t *mu, time_t timeout_sec) {
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
   struct timespec timeout;
-  int rv = clock_gettime(CLOCK_REALTIME, &timeout);
+  rv = clock_gettime(CLOCK_REALTIME, &timeout);
   timeout.tv_sec += timeout_sec;
   assert(rv == 0);
   rv = pthread_mutex_timedlock(mu, &timeout);
@@ -748,7 +748,7 @@ err_t ptr_fifo_push(struct ptr_fifo *fifo, void *ptr, time_t timeout_sec) {
     rv = sem_wait(fifo->push);
   } else {
     struct timespec timeout;
-    int rv = clock_gettime(CLOCK_REALTIME, &timeout);
+    rv = clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += timeout_sec;
     assert(rv == 0);
     rv = sem_timedwait(fifo->push, &timeout);
@@ -783,7 +783,7 @@ err_t ptr_fifo_pop(struct ptr_fifo *fifo, void **ptr, time_t timeout_sec) {
     rv = sem_wait(fifo->pop);
   } else {
     struct timespec timeout;
-    int rv = clock_gettime(CLOCK_REALTIME, &timeout);
+    rv = clock_gettime(CLOCK_REALTIME, &timeout);
     timeout.tv_sec += timeout_sec;
     assert(rv == 0);
     rv = sem_timedwait(fifo->pop, &timeout);
