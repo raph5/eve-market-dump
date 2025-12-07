@@ -303,6 +303,7 @@ struct esi_response {
   size_t pages;     // content of the X-Pages header
   time_t expires;   // content expiry
   time_t modified;  // content last modification date
+  int code;         // http response code
 };
 
 void esi_response_destroy(struct esi_response *res) {
@@ -454,6 +455,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
       errmsg_fmt("CURLINFO_RESPONSE_CODE error: %s", curl_easy_strerror(rv));
       continue;
     }
+    reponse->code = res_code;
 
     // implicit timeout
     if (res_code == 500 || res_code == 503) {

@@ -132,7 +132,7 @@ err_t hoardling_orders_dump(struct string dump_dir, struct order_vec *order_vec,
                                        (int) dump_dir.len, dump_dir.buf, now);
 
   struct dump dump;
-  err_t err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 5);
+  err_t err = dump_open_write(&dump, dump_path, DUMP_TYPE_ORDERS, now + 60 * 10);
   if (err != E_OK) {
     errmsg_prefix("dump_open_write: ");
     return E_ERR;
@@ -224,8 +224,9 @@ void *hoardling_orders(void *args_ptr) {
 
     err = order_download_universe(&order_vec, global_regions, global_regions_len);
     if (err != E_OK) {
-      errmsg_prefix("order hoardling error: order_download_universe: ");
       log_print("orders hoardling: 2 minutes backoff");
+      errmsg_prefix("order_download_universe: ");
+      errmsg_print();
       sleep(2 * 60);
       continue;
     }
@@ -378,10 +379,29 @@ void *hoardling_histories(void *args_ptr) {
         err = history_download(&bit_vec, market);
         if (err == E_OK) {
           break;
-        } else if (try <= 5) {
+        } else if (try <= 6) {
           try += 1;
-          log_error("histories hoardling: history download failed, retrying in 10 minutes");
-          sleep(10 * TIME_MINUTE);
+          errmsg_prefix("history_download: ");
+          errmsg_print();
+          time_t backoff;
+          switch (try) {
+            case 1:
+            case 2:
+            case 3:
+              log_error("histories hoardling: history download failed, retrying in 5 minutes");
+              backoff = 5 * TIME_MINUTE;
+              break;
+            case 4:
+            case 5:
+              log_error("histories hoardling: history download failed, retrying in 30 minutes");
+              backoff = 30 * TIME_MINUTE;
+              break;
+            case 6:
+              log_error("histories hoardling: history download failed, retrying in 2 hours");
+              backoff = 2 * TIME_HOUR;
+              break;
+          }
+          sleep(backoff);
         } else {
           log_error("histories hoardling: history download failed, out of trails");
           errmsg_prefix("history_download: ");
@@ -516,10 +536,29 @@ void *hoardling_histories(void *args_ptr) {
         err = history_download(&bit_vec, market);
         if (err == E_OK) {
           break;
-        } else if (try <= 5) {
+        } else if (try <= 6) {
           try += 1;
-          log_error("histories hoardling: history download failed, retrying in 10 minutes");
-          sleep(10 * TIME_MINUTE);
+          errmsg_prefix("history_download: ");
+          errmsg_print();
+          time_t backoff;
+          switch (try) {
+            case 1:
+            case 2:
+            case 3:
+              log_error("histories hoardling: history download failed, retrying in 5 minutes");
+              backoff = 5 * TIME_MINUTE;
+              break;
+            case 4:
+            case 5:
+              log_error("histories hoardling: history download failed, retrying in 30 minutes");
+              backoff = 30 * TIME_MINUTE;
+              break;
+            case 6:
+              log_error("histories hoardling: history download failed, retrying in 2 hours");
+              backoff = 2 * TIME_HOUR;
+              break;
+          }
+          sleep(backoff);
         } else {
           log_error("histories hoardling: history download failed, out of trails");
           errmsg_prefix("history_download: ");
