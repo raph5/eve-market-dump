@@ -455,7 +455,7 @@ err_t esi_perform_request(CURL *handle, struct esi_response *response,
       errmsg_fmt("CURLINFO_RESPONSE_CODE error: %s", curl_easy_strerror(rv));
       continue;
     }
-    reponse->code = res_code;
+    response->code = res_code;
 
     // implicit timeout
     if (res_code == 500 || res_code == 503) {
