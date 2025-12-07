@@ -558,7 +558,7 @@ typedef pthread_mutex_t mutex_t;
 void mutex_lock(mutex_t *mu, time_t timeout_sec) {
 #if defined(_POSIX_TIMEOUTS) && _POSIX_TIMEOUTS > 0
   struct timespec timeout;
-  rv = clock_gettime(CLOCK_REALTIME, &timeout);
+  int rv = clock_gettime(CLOCK_REALTIME, &timeout);
   timeout.tv_sec += timeout_sec;
   assert(rv == 0);
   rv = pthread_mutex_timedlock(mu, &timeout);
