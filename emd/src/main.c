@@ -183,12 +183,12 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  struct hoardling_locations_args hoardling_locations_args = {
+    .dump_dir = args.dump_dir,
+    .chan_orders_to_locations = &chan_orders_to_locations,
+  };
   pthread_t hoardling_locations_thread;
   if (args.structure) {
-    struct hoardling_locations_args hoardling_locations_args = {
-      .dump_dir = args.dump_dir,
-      .chan_orders_to_locations = &chan_orders_to_locations,
-    };
     rv = pthread_create(&hoardling_locations_thread, NULL, hoardling_locations,
                         &hoardling_locations_args);
     if (rv != 0) {
@@ -198,13 +198,13 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  struct hoardling_histories_args hoardling_histories_args = {
+    .dump_dir = args.dump_dir,
+    .active_market_request = &active_market_request,
+    .active_market_response = &active_market_response,
+  };
   pthread_t hoardling_histories_thread;
   if (args.history) {
-    struct hoardling_histories_args hoardling_histories_args = {
-      .dump_dir = args.dump_dir,
-      .active_market_request = &active_market_request,
-      .active_market_response = &active_market_response,
-    };
     rv = pthread_create(&hoardling_histories_thread, NULL, hoardling_histories,
                         &hoardling_histories_args);
     if (rv != 0) {
