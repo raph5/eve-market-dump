@@ -245,7 +245,7 @@ void *hoardling_orders(void *args_ptr) {
     }
 
     if (args.structure) {
-      err = hoardling_orders_send_location_id_vec(&order_vec, args.active_market_request);
+      err = hoardling_orders_send_location_id_vec(&order_vec, args.chan_orders_to_locations);
       if (err != E_OK) {
         log_error("orders hoardling: unable to locations id to locations hoardling");
         errmsg_prefix("hoardling_orders_send_location_id_vec: ");
