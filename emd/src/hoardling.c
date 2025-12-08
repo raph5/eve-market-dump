@@ -96,6 +96,7 @@ void *hoardling_locations(void *args_ptr) {
     }
 
     uint64_vec_destroy(locid_vec);
+    free(locid_vec);
 
     if (new_loc_info) {
       time_t now = time(NULL);
@@ -155,18 +156,27 @@ err_t hoardling_orders_dump(struct string dump_dir, struct order_vec *order_vec,
 
 err_t hoardling_orders_send_location_id_vec(struct order_vec *order_vec,
                                             struct ptr_fifo *chan_orders_to_locations) {
-  struct uint64_vec locid_vec = { .cap = 2048 };
-  err_t err = order_fill_location_id_vec(&locid_vec, order_vec);
+  /* struct uint64_vec locid_vec = { .cap = 2048 }; */
+  struct uint64_vec *locid_vec = malloc(sizeof(struct uint64_vec));
+  if (locid_vec == NULL) {
+    errmsg_fmt("malloc: %s", strerror(errno));
+    return E_ERR;
+  }
+  *locid_vec = (struct locid_vec) { .cap = 2048 };
+
+  err_t err = order_fill_location_id_vec(locid_vec, order_vec);
   if (err != E_OK) {
-    uint64_vec_destroy(&locid_vec);
+    uint64_vec_destroy(locid_vec);
+    free(locid_vec);
     errmsg_prefix("order_fill_location_id_vec: ");
     return E_ERR;
   }
 
   // pass ownership of locid_vec to chan_orders_to_locations
-  err = ptr_fifo_push(chan_orders_to_locations, &locid_vec, 15);
+  err = ptr_fifo_push(chan_orders_to_locations, locid_vec, 15);
   if (err != E_OK) {
-    uint64_vec_destroy(&locid_vec);
+    uint64_vec_destroy(locid_vec);
+    free(locid_vec);
     errmsg_prefix("ptr_fifo_push: ");
     return E_ERR;
   }
