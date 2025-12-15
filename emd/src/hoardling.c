@@ -156,13 +156,12 @@ err_t hoardling_orders_dump(struct string dump_dir, struct order_vec *order_vec,
 
 err_t hoardling_orders_send_location_id_vec(struct order_vec *order_vec,
                                             struct ptr_fifo *chan_orders_to_locations) {
-  /* struct uint64_vec locid_vec = { .cap = 2048 }; */
   struct uint64_vec *locid_vec = malloc(sizeof(struct uint64_vec));
   if (locid_vec == NULL) {
     errmsg_fmt("malloc: %s", strerror(errno));
     return E_ERR;
   }
-  *locid_vec = (struct locid_vec) { .cap = 2048 };
+  *locid_vec = (struct uint64_vec) { .cap = 2048 };
 
   err_t err = order_fill_location_id_vec(locid_vec, order_vec);
   if (err != E_OK) {
