@@ -243,7 +243,7 @@ err_t order_download_page(struct order_vec *order_vec, uint64_t region_id,
   assert(order_vec != NULL);
   assert(page >= 1);
 
-  log_print("order_download region %" PRIu64 " page %zu", region_id, page);
+  // log_print("order_download region %" PRIu64 " page %zu", region_id, page);
 
   err_t res = E_ERR;
   struct esi_response response = {0};

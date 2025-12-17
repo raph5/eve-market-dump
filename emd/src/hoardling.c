@@ -492,7 +492,7 @@ void *hoardling_histories(void *args_ptr) {
 
         for (size_t i = 0; i < bit_chunk.len; ++i) {
           if (date_is_equal(date, bit_chunk.buf[i].date)) {
-            log_print("date match: (%" PRIu64 ", %" PRIu64 ")", bit_chunk.buf[i].date.year, bit_chunk.buf[i].date.day);
+            // log_print("date match: (%" PRIu64 ", %" PRIu64 ")", bit_chunk.buf[i].date.year, bit_chunk.buf[i].date.day);
             err = history_bit_vec_push(&bit_vec, bit_chunk.buf[i]);
             if (err != E_OK) {
               errmsg_prefix("history_bit_vec_push: ");

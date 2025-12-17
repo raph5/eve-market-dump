@@ -266,8 +266,7 @@ err_t history_download(struct history_bit_vec *bit_vec,
                        struct history_market market) {
   assert(bit_vec != NULL);
 
-  // TODO: remove log
-  log_print("download market (%" PRIu64 ", %" PRIu64 ")", market.region_id, market.type_id);
+  // log_print("download market (%" PRIu64 ", %" PRIu64 ")", market.region_id, market.type_id);
 
   err_t res = E_ERR;
   struct esi_response response = {0};

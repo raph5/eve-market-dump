@@ -117,7 +117,7 @@ void global_cleanup(void) {
   dump_record_burn();
 }
 
-// NOTE: the indended to exit the main function is to receive a SIGINT/SIGTERM
+// NOTE: the indended to way exit the main function is to receive a SIGINT/SIGTERM
 int main(int argc, char *argv[]) {
   err_t err = global_init();
   if (err != E_OK) {
