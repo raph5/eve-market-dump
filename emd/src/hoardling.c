@@ -294,14 +294,14 @@ struct hoardling_histories_args {
 
 bool hoardling_histories_dump_does_exist(struct string dump_dir, struct date date) {
   char dump_path_buf[DUMP_PATH_LEN_MAX];
-  struct string last_dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+  struct string last_dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu16 "-%" PRIu16 ".dump",
                                             (int) dump_dir.len, dump_dir.buf, date.year, date.day);
   return dump_does_exist(last_dump_path);
 }
 
 err_t hoardling_histories_dump(struct string dump_dir, struct history_bit_vec *bit_vec, struct date date) {
   char dump_path_buf[DUMP_PATH_LEN_MAX];
-  struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu64 "-%" PRIu64 ".dump",
+  struct string dump_path = string_fmt(dump_path_buf, DUMP_PATH_LEN_MAX, "%.*s/history-day-%" PRIu16 "-%" PRIu16 ".dump",
                                        (int) dump_dir.len, dump_dir.buf, date.year, date.day);
   if (dump_does_exist(dump_path)) {
     errmsg_fmt("there is already a dump at %.*s", dump_path.len, dump_path.buf);
