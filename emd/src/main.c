@@ -111,7 +111,19 @@ err_t global_init(void) {
   }
   secret_table_create();
   srand(time(NULL));
-  int rv = atexit(handle_atexit);
+  // It seams that -fsanitize=address changes the behavour of stdout
+  // buffering. That's why I call setvbuf here
+  int rv = setvbuf(stdout, NULL, _IOLBF, 0);
+  if (rv != 0) {
+    errmsg_fmt("setvbuf: %s", strerror(errno));
+    return E_ERR;
+  }
+  rv = setvbuf(stderr, NULL, _IONBF, 0);
+  if (rv != 0) {
+    errmsg_fmt("setvbuf: %s", strerror(errno));
+    return E_ERR;
+  }
+  rv = atexit(handle_atexit);
   if (rv != 0) {
     errmsg_fmt("atexit: %s", strerror(errno));
     return E_ERR;
