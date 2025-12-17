@@ -93,6 +93,11 @@ err_t args_parse(int argc, char *argv[], struct args *args) {
   return E_OK;
 }
 
+// should not be called, but just in case..
+void handle_atexit(void) {
+  log_error("atexit reached");
+}
+
 err_t global_init(void) {
   CURLcode crv = curl_global_init(CURL_GLOBAL_ALL);
   if (crv != CURLE_OK) {
@@ -106,6 +111,11 @@ err_t global_init(void) {
   }
   secret_table_create();
   srand(time(NULL));
+  int rv = atexit(handle_atexit);
+  if (rv != 0) {
+    errmsg_fmt("atexit: %s", strerror(errno));
+    return E_ERR;
+  }
   return E_OK;
 }
 
