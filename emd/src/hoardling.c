@@ -556,7 +556,7 @@ void *hoardling_histories(void *args_ptr) {
       int try = 1;
       while (1) {
         err = history_download(&bit_vec, market);
-        if (err == E_OK) {
+        if (err == E_OK || err == E_NOT_FOUND) {
           break;
         } else if (try <= 6) {
           try += 1;
