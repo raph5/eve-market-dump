@@ -1,6 +1,5 @@
 .DS_Store
 *.dSYM
-lib
 .cache
 *.dump
 *.gz
