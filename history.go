@@ -155,7 +155,10 @@ func DownloadFullHistoryDump(
 	TryAgain:
 		uri := fmt.Sprintf("/markets/%d/history?type_id=%d", m.RegionId, m.TypeId)
 		response, err := esiFetch[[]esiHistoryDay](ctx, "GET", uri, false, nil, 5)
-		if err != nil && trails > 1 && !errors.As(err, &esiError) {
+		if response.code == 404 || response.code == 400 {
+			// Skip this market
+			continue
+		} else if err != nil && trails > 1 && !errors.As(err, &esiError) {
 			if isLoggingEnabled(ctx) {
 				log.Print("DownloadFullHistoryDump: Encountered an error while downloading histories, taking a 15 minutes break")
 			}

@@ -24,6 +24,7 @@ const (
 type esiResponse[T any] struct {
 	data  *T
 	pages int
+	code  int
 }
 type esiError struct {
 	message string
@@ -221,6 +222,7 @@ func esiFetch[T any](
 	esiResponse := esiResponse[T]{
 		data:  &data,
 		pages: pages,
+		code:  response.StatusCode,
 	}
 
 	return esiResponse, nil

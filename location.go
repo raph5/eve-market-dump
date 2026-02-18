@@ -54,15 +54,15 @@ var ErrUnknownNpcStation = errors.New("Unknown npc station, You should renew dat
 var ErrUnknownSystem = errors.New("Unknown solar system, You should renew data/systemscsv")
 
 func init() {
-  var err error
-  stations, err = readStationSvg()
-  if err != nil {
-    log.Panicf("readStationSvg: %v", err)
-  }
-  systems, err = readSystemSvg()
-  if err != nil {
-    log.Panicf("readSystemSvg: %v", err)
-  }
+	var err error
+	stations, err = readStationSvg()
+	if err != nil {
+		log.Panicf("readStationSvg: %v", err)
+	}
+	systems, err = readSystemSvg()
+	if err != nil {
+		log.Panicf("readSystemSvg: %v", err)
+	}
 }
 
 // DownloadLocationDump will return a slice of forbidden locations. Avoid
