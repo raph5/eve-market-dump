@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
-	"io"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -42,6 +44,11 @@ var (
 
 func init() {
   globalOrdersFetched = make(chan struct{}, 1)
+  globalLocations.Data = make([]emd.Location, 0)
+  globalOrders.Data = make([]emd.Order, 0, 100_000)
+  for i := range globalHistories {
+    globalHistories[i].Data = make([]emd.HistoryDay, 100_000)
+  }
 }
 
 func historyWorker(ctx context.Context) {
@@ -199,15 +206,68 @@ func orderWorker(ctx context.Context, secrets *emd.ApiSecrets) {
   }
 }
 
-
 func httpServerWorker(ctx context.Context) {
-  handleIndex := func (w http.ResponseWriter, req *http.Request) {
-    io.WriteString(w, "<h1>Eve Market Dump</h1>\n");
+  handleIndex := func (w http.ResponseWriter, r *http.Request) {
+    globalLocationsMu.RLock()
+    globalHistoriesMu.RLock()
+    globalOrdersMu.RLock()
+    fmt.Fprintf(w, "<h1>Eve Market Dump</h1>\n")
+    fmt.Fprintf(w, "<h2>Locations</h2><hr>\n")
+    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a>\n", "/location", time.Unix(globalLocations.Date, 0).Format("2006-01-02T15:04:05Z"), "location dump")
+    fmt.Fprintf(w, "<h2>Orders</h2><hr>\n")
+    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a>\n", "/order", time.Unix(globalOrders.Date, 0).Format("2006-01-02T15:04:05Z"), "order dump")
+    fmt.Fprintf(w, "<h2>Histories</h2><hr>\n")
+    for _, h := range globalHistories {
+      fmt.Fprintf(w, "<a href=\"/history/%d\">%s history dump</a>\n", h.Date, time.Unix(h.Date, 0).Format("2006-01-02T15:04:05Z"))
+    }
+    globalLocationsMu.RUnlock()
+    globalHistoriesMu.RUnlock()
+    globalOrdersMu.RUnlock()
+  }
+
+  handleLocation := func (w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    globalLocationsMu.RLock()
+    json.NewEncoder(w).Encode(globalLocations.Data)
+    globalLocationsMu.RUnlock()
+  }
+
+  handleOrder := func (w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    globalOrdersMu.RLock()
+    json.NewEncoder(w).Encode(globalOrders.Data)
+    globalOrdersMu.RUnlock()
+  }
+
+  handleHistory := func (w http.ResponseWriter, r *http.Request) {
+    date, err := strconv.Atoi(r.PathValue("date"))
+    if err != nil {
+        http.NotFound(w, r)
+        return
+    }
+
+    globalHistoriesMu.RLock()
+    for _, h := range globalHistories {
+      if h.Date == int64(date) {
+        globalHistoriesMu.RUnlock()
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusCreated)
+        json.NewEncoder(w).Encode(h.Data)
+        return
+      }
+    }
+    globalHistoriesMu.RUnlock()
+    http.NotFound(w, r)
   }
 
 	errCh := make(chan error)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex)
+	mux.HandleFunc("/location", handleLocation)
+	mux.HandleFunc("/order", handleOrder)
+	mux.HandleFunc("/history/{date}", handleHistory)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
