@@ -34,13 +34,20 @@ type system struct {
 	security float32
 }
 
+type esiStructure struct {
+	Name     string `json:"name"`
+	SystemId uint64 `json:"solar_system_id"`
+	TypeId   uint64 `json:"type_id"`
+	OwnerId  uint64 `json:"owner_id"`
+}
+
 //go:embed data/stations.csv
 var csvStations []byte
 var stations []station
 
 //go:embed data/systems.csv
 var csvSystems []byte
-var systems[]system
+var systems []system
 
 var ErrUnknownNpcStation = errors.New("Unknown npc station, You should renew data/stations.csv")
 var ErrUnknownSystem = errors.New("Unknown solar system, You should renew data/systemscsv")
@@ -52,93 +59,87 @@ func DownloadLocationDump(
 	ctx context.Context,
 	unknown_location []uint64,
 	secrets *ApiSecrets,
-) ([]Location, /* forbiddenLocations */ []uint64, error) {
-  var err error
-  if stations == nil {
-    stations, err = readStationSvg()
-    if err != nil {
-      return nil, nil, fmt.Errorf("read stations svg: %w", err)
-    }
-  }
-  if systems == nil {
-    systems, err = readSystemSvg()
-    if err != nil {
-      return nil, nil, fmt.Errorf("read systems svg: %w", err)
-    }
-  }
+) ([]Location /* forbiddenLocations */, []uint64, error) {
+	var err error
+	if stations == nil {
+		stations, err = readStationSvg()
+		if err != nil {
+			return nil, nil, fmt.Errorf("read stations svg: %w", err)
+		}
+	}
+	if systems == nil {
+		systems, err = readSystemSvg()
+		if err != nil {
+			return nil, nil, fmt.Errorf("read systems svg: %w", err)
+		}
+	}
 
-  locationData := make([]Location, 0, len(unknown_location))
-  forbiddenLocations := make([]uint64, 0, len(unknown_location))
+	locationData := make([]Location, 0, len(unknown_location))
+	forbiddenLocations := make([]uint64, 0, len(unknown_location))
 
-  for _, locId := range unknown_location {
-    isNpcStation := locId >= 60000000 && locId <= 64000000
-    if isNpcStation {
-      station := getStationById(stations, locId)
-      if station != nil {
-        locationData = append(locationData, Location{
-          Id: station.id,
-          TypeId: station.typeId,
-          OwnerId: station.ownerId,
-          SystemId: station.systemId,
-          Security: station.security,
-          Name: station.name,
-        })
-      } else {
-        return nil, nil, ErrUnknownNpcStation
-      }
-    } else {
-      type esiStructure struct {
-        Name     string `json:"name"`
-        SystemId uint64 `json:"solar_system_id"`
-        TypeId uint64 `json:"type_id"`
-        OwnerId uint64 `json:"owner_id"`
-      }
-      uri := fmt.Sprintf("/universe/structures/%d", locId)
-      response, err := esiFetch[esiStructure](ctx, "GET", uri, true, secrets, 1)
-      var esiError *esiError
-      if errors.As(err, &esiError) {
-        forbiddenLocations = append(forbiddenLocations, locId)
-        continue
-      }
-      if err != nil {
-        return nil, nil, fmt.Errorf("fetching esi strucure info: %w", err)
-      }
+	for _, locId := range unknown_location {
+		isNpcStation := locId >= 60000000 && locId <= 64000000
+		if isNpcStation {
+			station := getStationById(stations, locId)
+			if station != nil {
+				locationData = append(locationData, Location{
+					Id:       station.id,
+					TypeId:   station.typeId,
+					OwnerId:  station.ownerId,
+					SystemId: station.systemId,
+					Security: station.security,
+					Name:     station.name,
+				})
+			} else {
+				return nil, nil, ErrUnknownNpcStation
+			}
+		} else {
+			uri := fmt.Sprintf("/universe/structures/%d", locId)
+			response, err := esiFetch[esiStructure](ctx, "GET", uri, true, secrets, 1)
+			var esiError *esiError
+			if errors.As(err, &esiError) {
+				forbiddenLocations = append(forbiddenLocations, locId)
+				continue
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("fetching esi strucure info: %w", err)
+			}
 
-      system := getSystemById(systems, response.data.SystemId)
-      if system == nil {
-        return nil, nil, ErrUnknownSystem
-      }
+			system := getSystemById(systems, response.data.SystemId)
+			if system == nil {
+				return nil, nil, ErrUnknownSystem
+			}
 
-      locationData = append(locationData, Location{
-        Id: locId,
-        Security: system.security,
-        TypeId: response.data.TypeId,
-        SystemId: response.data.SystemId,
-        OwnerId: response.data.OwnerId,
-        Name: response.data.Name,
-      })
-    }
-  }
+			locationData = append(locationData, Location{
+				Id:       locId,
+				Security: system.security,
+				TypeId:   response.data.TypeId,
+				SystemId: response.data.SystemId,
+				OwnerId:  response.data.OwnerId,
+				Name:     response.data.Name,
+			})
+		}
+	}
 
-  return locationData, forbiddenLocations, nil
+	return locationData, forbiddenLocations, nil
 }
 
 func getSystemById(systemSlice []system, id uint64) *system {
-  for _, s := range systemSlice {
-    if s.id == id {
-      return &s
-    }
-  }
-  return nil
+	for _, s := range systemSlice {
+		if s.id == id {
+			return &s
+		}
+	}
+	return nil
 }
 
 func getStationById(stationSlice []station, id uint64) *station {
-  for _, s := range stationSlice {
-    if s.id == id {
-      return &s
-    }
-  }
-  return nil
+	for _, s := range stationSlice {
+		if s.id == id {
+			return &s
+		}
+	}
+	return nil
 }
 
 func readSystemSvg() ([]system, error) {

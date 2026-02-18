@@ -1,0 +1,348 @@
+package main
+
+import (
+	"context"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	emd "github.com/raph5/eve-market-dump"
+)
+
+type historyDump struct {
+  Date int64
+  Data []emd.HistoryDay
+}
+type orderDump struct {
+  Date int64
+  Data []emd.Order
+}
+type locationDump struct {
+  Date int64
+  Data []emd.Location
+}
+
+var (
+  globalHistories []historyDump
+  globalHistoriesMu sync.RWMutex
+
+  globalOrders orderDump
+  globalOrdersMu sync.RWMutex
+  globalOrdersFetched chan struct{}
+
+  globalLocations locationDump
+  globalForbiddenLocations []uint64
+  globalLocationsMu sync.RWMutex
+)
+
+func historyWorker(ctx context.Context) {
+  globalHistories = nil
+
+  select {
+  case <-ctx.Done():
+    log.Printf("History Worker Canceled: %v", ctx.Err())
+    return 
+  case <-globalOrdersFetched:
+  }
+
+  globalOrdersMu.RLock()
+  activeMarkets := getActiveMarkets(globalOrders.Data)
+  globalOrdersMu.RUnlock()
+
+  log.Printf("History Worker: full download start")
+  fullDownloadStart := time.Now()
+  snapshot, err := emd.DownloadFullHistoryDump(ctx, activeMarkets)
+  if err != nil {
+    log.Printf("History Worker Error: DownloadFullHistoryDump: %v", err)
+    return
+  }
+  defer snapshot.Close()  // Important
+  log.Printf("History Worker: full download processing")
+
+  i := 0
+  if len(snapshot.Dates) > 10 {
+    i = len(snapshot.Dates) - 10;
+  }
+  for _, date := range snapshot.Dates[i:] {
+    historyData, err := snapshot.GetHistoryDataForDay(ctx, date)
+    if err != nil {
+      log.Printf("History Worker Error: GetHistoryDataForDay: %v", err)
+      return
+    }
+    globalHistoriesMu.Lock()
+    globalHistories = append(globalHistories, historyDump{
+      Date: date.Unix(),
+      Data: historyData,
+    })
+    globalHistoriesMu.Unlock()
+  }
+
+  log.Printf("History Worker: full download end")
+  err = snapshot.Close()
+  if err != nil {
+    log.Printf("History Worker Error: closing snapshot: %v", err)
+    return
+  }
+
+  elevenFifteenTomorrow := getElevenFifteenTomorrow(fullDownloadStart)
+  elevenFifteenToday := getElevenFifteenToday(fullDownloadStart)
+  expiration := elevenFifteenTomorrow
+  if fullDownloadStart.Before(elevenFifteenToday) {
+    expiration = elevenFifteenToday
+  }
+
+  for {
+    if err := ctx.Err(); err != nil {
+      return
+    }
+
+    now := time.Now()
+		timeToWait := expiration.Sub(now)
+		if timeToWait > 0 {
+			log.Print("History Worker: up to date")
+
+			sleepWithContext(ctx, timeToWait)
+			continue
+		}
+
+    // here we assume that every market is up to date at 11:15 as stated at
+    // https://developers.eveonline.com/api-explorer#/operations/GetMarketsRegionIdHistory
+    log.Printf("History Worker: incremental download start")
+    date := getYesterday(now)
+    globalOrdersMu.RLock()
+    activeMarkets := getActiveMarkets(globalOrders.Data)
+    globalOrdersMu.RUnlock()
+    historyData, err := emd.DownloadIncrementalHistoryDump(ctx, activeMarkets, date)
+    if err != nil {
+      log.Printf("History Worker Error: DownloadIncrementalHistoryDump: %v", err)
+      continue
+    }
+    log.Printf("History Worker: incremental download end")
+
+    globalHistoriesMu.Lock()
+    globalHistories = append(globalHistories, historyDump{
+      Date: date.Unix(),
+      Data: historyData,
+    })
+    globalHistoriesMu.Unlock()
+
+
+    expiration = expiration.Add(24 * time.Hour)
+  }
+}
+
+func orderWorker(ctx context.Context, secrets *emd.ApiSecrets) {
+  expiration := time.Now()
+
+  for {
+    if err := ctx.Err(); err != nil {
+      return
+    }
+
+    now := time.Now()
+		timeToWait := expiration.Sub(now)
+		if timeToWait > 0 {
+			log.Print("Order Worker: up to date")
+
+			sleepWithContext(ctx, timeToWait)
+			continue
+		}
+
+    log.Printf("Order Worker: orders download start")
+    orders, err := emd.DownloadOrderDump(ctx)
+    if err != nil {
+      log.Printf("Order Worker Error: DownloadOrderDump: %v", err)
+      continue
+    }
+    expiration = expiration.Add(24 * time.Hour)
+    log.Printf("Order Worker: orders download end")
+
+    // Signaling to historyWorker that he can start working
+    select {
+    case globalOrdersFetched <- struct{}{}:
+    default:
+    }
+
+    globalOrdersMu.Lock()
+    globalOrders = orderDump{ Date: now.Unix(), Data: orders }
+    globalOrdersMu.Unlock()
+
+    globalLocationsMu.RLock()
+    unknownLocation := getUnknownLocations(orders, globalLocations.Data, globalForbiddenLocations)
+    globalLocationsMu.RUnlock()
+    if len(unknownLocation) > 0 {
+      log.Printf("Order Worker: location download start")
+      locations, forbiddenLocations, err := emd.DownloadLocationDump(ctx, unknownLocation, secrets)
+      if err != nil {
+        log.Printf("Order Worker Error: DownloadLocationDump: %v", err)
+        continue
+      }
+      log.Printf("Order Worker: location download end")
+
+      globalLocationsMu.Lock()
+      globalForbiddenLocations = append(globalForbiddenLocations, forbiddenLocations...)
+      globalLocations = locationDump{
+        Date: now.Unix(),
+        Data: append(globalLocations.Data, locations...),
+      }
+      globalLocationsMu.Unlock()
+    }
+  }
+}
+
+
+func httpServerWorker(ctx context.Context) {
+  handleIndex := func (w http.ResponseWriter, req *http.Request) {
+    io.WriteString(w, "<h1>Eve Market Dump</h1>\n");
+  }
+
+	errCh := make(chan error)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleIndex)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
+
+  go func() {
+    log.Printf("Http Server Worker: listening on http://localhost%s", server.Addr)
+		err := server.ListenAndServe()
+		if err != nil {
+			errCh <- err
+		}
+  }()
+
+	select {
+	case <-ctx.Done():
+	case err := <-errCh:
+		log.Printf("Http Server Worker Error: %v", err)
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer shutdownCancel()
+	err := server.Shutdown(shutdownCtx)
+	if err != nil {
+		log.Printf("Http Server Wroker Error: %v", err)
+	}
+}
+
+func getElevenFifteenToday(now time.Time) time.Time {
+  return time.Date(now.Year(), now.Month(), now.Day(), 11, 15, 0, 0, now.Location())
+}
+
+func getElevenFifteenTomorrow(now time.Time) time.Time {
+  return time.Date(now.Year(), now.Month(), now.Day()+1, 11, 15, 0, 0, now.Location())
+}
+
+func getToday(now time.Time) time.Time {
+  return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
+func getYesterday(now time.Time) time.Time {
+  return time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, now.Location())
+}
+
+func getActiveMarkets(orders []emd.Order) []emd.HistoryMarket {
+  activeMarketsMap := make(map[emd.HistoryMarket]struct{}, 350_000)
+  activeMarkets := make([]emd.HistoryMarket, 0, 350_000)
+  for _, o := range orders {
+    market := emd.HistoryMarket{RegionId: o.RegionId, TypeId: o.TypeId}
+    if _, ok := activeMarketsMap[market]; !ok {
+      activeMarketsMap[market] = struct{}{}
+      activeMarkets = append(activeMarkets, market)
+    }
+  }
+  return activeMarkets
+}
+
+func getUnknownLocations(orders []emd.Order, knownLocations []emd.Location, forbiddenLocation []uint64) ([]uint64) {
+  unknownLocations := make([]uint64, 0, 32)
+OrderLoop:
+  for _, o := range orders {
+    for _, l := range knownLocations {
+      if o.LocationId == l.Id {
+        continue OrderLoop
+      }
+    }
+    for _, lId := range forbiddenLocation {
+      if o.LocationId == lId {
+        continue OrderLoop
+      }
+    }
+    unknownLocations = append(unknownLocations, o.LocationId)
+  }
+  return unknownLocations
+}
+
+func sleepWithContext(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		if !timer.Stop() {
+			<-timer.C
+		}
+		return ctx.Err()
+	}
+}
+
+func main() {
+	// Init logger
+	log.SetFlags(log.LstdFlags)
+
+	// Init secrets
+  secrets := emd.ApiSecrets{
+    SsoRefreshToken: os.Getenv("SSO_REFRESH_TOKEN"),
+    SsoClientId: os.Getenv("SSO_CLIENT_ID"),
+    SsoClientSecret: os.Getenv("SSO_CLIENT_SECRET"),
+  }
+  if secrets.SsoClientId == "" || secrets.SsoClientSecret == "" || secrets.SsoRefreshToken == "" {
+    log.Fatal("Environement variabels SSO_REFRESH_TOKEN, SSO_CLIENT_ID and SSO_CLIENT_SECRET are not set")
+  }
+
+  // Create context
+	ctx, cancel := context.WithCancel(context.Background())
+  ctx = emd.EnableLogging(ctx)
+	exitCh := make(chan os.Signal, 1)
+	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
+
+  // Starting wrokers
+	var mainWg sync.WaitGroup
+  mainWg.Add(3)
+  go func() {
+    historyWorker(ctx)
+    log.Print("History Worker: stopped")
+    mainWg.Done()
+    cancel()
+  }()
+  go func() {
+    orderWorker(ctx, &secrets)
+    log.Print("Order Worker: stopped")
+    mainWg.Done()
+    cancel()
+  }()
+  go func() {
+    httpServerWorker(ctx)
+    log.Print("Http Server Worker: stopped")
+    mainWg.Done()
+    cancel()
+  }()
+	log.Print("Server Started")
+
+	// Handle store shutdown
+	select {
+	case <-exitCh:
+		log.Print("Web Server Stopping...")
+		cancel()
+	case <-ctx.Done():
+	}
+	signal.Reset(syscall.SIGINT, syscall.SIGTERM)
+	mainWg.Wait()
+	log.Print("Web Server Stopped Gracefully")
+}

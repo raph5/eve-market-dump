@@ -18,6 +18,7 @@ const (
 	esiRoot           = "https://esi.evetech.net"
 	esiRequestTimeout = 7 * time.Second
 	esiDateLayout     = "2006-01-02"
+	esiTimeLayout     = "2006-01-02T15:04:05Z"
 )
 
 type esiResponse[T any] struct {
@@ -234,14 +235,14 @@ func acquireSSOToken(ctx context.Context, secrets *ApiSecrets) (string, error) {
 	// Create the request
 	url := "https://login.eveonline.com/v2/oauth/token"
 	var body bytes.Buffer
-	fmt.Fprintf(&body, "grant_type=refresh_token&refresh_token=%s", secrets.ssoRefreshToken)
+	fmt.Fprintf(&body, "grant_type=refresh_token&refresh_token=%s", secrets.SsoRefreshToken)
 	request, err := http.NewRequestWithContext(ctx, "POST", url, &body)
 	if err != nil {
 		return "", fmt.Errorf("new request: %w", err)
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("User-Agent", "evemarketbrowser.com - contact me at raphguyader@gmail.com")
-	request.Header.Set("Authorization", createBasicAuthHeader(secrets.ssoClientId, secrets.ssoClientSecret))
+	request.Header.Set("Authorization", createBasicAuthHeader(secrets.SsoClientId, secrets.SsoClientSecret))
 
 	// Run the request
 	client := &http.Client{
@@ -263,7 +264,7 @@ func acquireSSOToken(ctx context.Context, secrets *ApiSecrets) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("unmarshal sso response: %w", err)
 	}
-	if ssoResponse.TokenType != "Bearer" || ssoResponse.RefreshToken != secrets.ssoRefreshToken {
+	if ssoResponse.TokenType != "Bearer" || ssoResponse.RefreshToken != secrets.SsoRefreshToken {
 		return "", fmt.Errorf("unexpected sso repseonse: %v", ssoResponse)
 	}
 
