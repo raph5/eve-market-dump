@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
 )
 
@@ -52,6 +53,18 @@ var systems []system
 var ErrUnknownNpcStation = errors.New("Unknown npc station, You should renew data/stations.csv")
 var ErrUnknownSystem = errors.New("Unknown solar system, You should renew data/systemscsv")
 
+func init() {
+  var err error
+  stations, err = readStationSvg()
+  if err != nil {
+    log.Panicf("readStationSvg: %v", err)
+  }
+  systems, err = readSystemSvg()
+  if err != nil {
+    log.Panicf("readSystemSvg: %v", err)
+  }
+}
+
 // DownloadLocationDump will return a slice of forbidden locations. Avoid
 // requesting these locations in your subsequent requests. Otherwise you will
 // suffer error rate timeouts from the ESI.
@@ -60,20 +73,6 @@ func DownloadLocationDump(
 	unknown_location []uint64,
 	secrets *ApiSecrets,
 ) ([]Location /* forbiddenLocations */, []uint64, error) {
-	var err error
-	if stations == nil {
-		stations, err = readStationSvg()
-		if err != nil {
-			return nil, nil, fmt.Errorf("read stations svg: %w", err)
-		}
-	}
-	if systems == nil {
-		systems, err = readSystemSvg()
-		if err != nil {
-			return nil, nil, fmt.Errorf("read systems svg: %w", err)
-		}
-	}
-
 	locationData := make([]Location, 0, len(unknown_location))
 	forbiddenLocations := make([]uint64, 0, len(unknown_location))
 
@@ -143,13 +142,13 @@ func getStationById(stationSlice []station, id uint64) *station {
 }
 
 func readSystemSvg() ([]system, error) {
-	r := csv.NewReader(bytes.NewReader(csvStations))
+	r := csv.NewReader(bytes.NewReader(csvSystems))
 	record, err := r.Read()
 	if err != nil {
 		return nil, fmt.Errorf("reader error: %w", err)
 	}
 	if record[0] != "solarSystemID" || record[1] != "security" {
-		return nil, fmt.Errorf("invalid system csv header")
+		return nil, fmt.Errorf("invalid system csv header %v", record)
 	}
 
 	systemSlice := make([]system, 0, 9000)
@@ -192,7 +191,7 @@ func readStationSvg() ([]station, error) {
 		record[3] != "corporationID" ||
 		record[4] != "solarSystemID" ||
 		record[5] != "stationName" {
-		return nil, fmt.Errorf("invalid station csv header")
+		return nil, fmt.Errorf("invalid station csv header %v", record)
 	}
 
 	stationSlice := make([]station, 0, 6000)

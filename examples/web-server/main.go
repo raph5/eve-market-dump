@@ -40,6 +40,10 @@ var (
   globalLocationsMu sync.RWMutex
 )
 
+func init() {
+  globalOrdersFetched = make(chan struct{}, 1)
+}
+
 func historyWorker(ctx context.Context) {
   globalHistories = nil
 
@@ -159,7 +163,7 @@ func orderWorker(ctx context.Context, secrets *emd.ApiSecrets) {
       log.Printf("Order Worker Error: DownloadOrderDump: %v", err)
       continue
     }
-    expiration = expiration.Add(24 * time.Hour)
+    expiration = expiration.Add(10 * time.Minute)
     log.Printf("Order Worker: orders download end")
 
     // Signaling to historyWorker that he can start working
