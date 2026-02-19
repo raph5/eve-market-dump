@@ -68,6 +68,8 @@ func init() {
 // DownloadLocationDump will return a slice of forbidden locations. Avoid
 // requesting these locations in your subsequent requests. Otherwise you will
 // suffer error rate timeouts from the ESI.
+//
+// note that forbiddenLocations are returns even the functions errors
 func DownloadLocationDump(
 	ctx context.Context,
 	unknown_location []uint64,
@@ -90,7 +92,7 @@ func DownloadLocationDump(
 					Name:     station.name,
 				})
 			} else {
-				return nil, nil, ErrUnknownNpcStation
+				return nil, forbiddenLocations, ErrUnknownNpcStation
 			}
 		} else {
 			uri := fmt.Sprintf("/universe/structures/%d", locId)
@@ -101,12 +103,12 @@ func DownloadLocationDump(
 				continue
 			}
 			if err != nil {
-				return nil, nil, fmt.Errorf("fetching esi strucure info: %w", err)
+				return nil, forbiddenLocations, fmt.Errorf("fetching esi strucure info: %w", err)
 			}
 
 			system := getSystemById(systems, response.data.SystemId)
 			if system == nil {
-				return nil, nil, ErrUnknownSystem
+				return nil, forbiddenLocations, ErrUnknownSystem
 			}
 
 			locationData = append(locationData, Location{

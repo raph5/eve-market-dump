@@ -106,9 +106,9 @@ func (s *HistorySnapshot) GetHistoryDataForDay(ctx context.Context, requestDate 
 // Don't forget to defer the call to Close to remove the snapshot data from
 // disk when you finished using it. Close can be called multiple times
 func (s *HistorySnapshot) Close() error {
-	// this lock should not block if ctx.Done
+	// BUG: Sometimes the snapshot file is not removed properly
 	if !s.closed {
-		s.closed = true
+		// this lock should not block if ctx.Done
 		s.fileMu.Lock()
 		defer s.fileMu.Unlock()
 		err := s.file.Close()
@@ -119,6 +119,8 @@ func (s *HistorySnapshot) Close() error {
 		if err != nil {
 			return fmt.Errorf("remove: %w", err)
 		}
+		log.Printf("Debug: successfully removed %v", s.file.Name())
+		s.closed = true
 	}
 	return nil
 }
@@ -155,7 +157,7 @@ func DownloadFullHistoryDump(
 		uri := fmt.Sprintf("/markets/%d/history?type_id=%d", m.RegionId, m.TypeId)
 		response, err := esiFetch[[]esiHistoryDay](ctx, "GET", uri, false, nil, 5)
 		var esiError *esiError
-    isEsiError := errors.As(err, &esiError)
+		isEsiError := errors.As(err, &esiError)
 		if isEsiError && (esiError.code == 400 || esiError.code == 404) {
 			// Skip this market
 			continue

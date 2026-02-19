@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"sync"
 	"syscall"
@@ -38,8 +39,8 @@ var (
   globalOrdersFetched chan struct{}
 
   globalLocations locationDump
-  globalForbiddenLocations []uint64
   globalLocationsMu sync.RWMutex
+  globalForbiddenLocations []uint64 // don't need to be protected by globalLocationsMu
 )
 
 func init() {
@@ -191,12 +192,13 @@ func orderWorker(ctx context.Context, secrets *emd.ApiSecrets) {
       locations, forbiddenLocations, err := emd.DownloadLocationDump(ctx, unknownLocation, secrets)
       if err != nil {
         log.Printf("Order Worker Error: DownloadLocationDump: %v", err)
+        globalForbiddenLocations = append(globalForbiddenLocations, forbiddenLocations...)
         continue
       }
       log.Printf("Order Worker: location download end")
 
-      globalLocationsMu.Lock()
       globalForbiddenLocations = append(globalForbiddenLocations, forbiddenLocations...)
+      globalLocationsMu.Lock()
       globalLocations = locationDump{
         Date: now.Unix(),
         Data: append(globalLocations.Data, locations...),
@@ -213,12 +215,12 @@ func httpServerWorker(ctx context.Context) {
     globalOrdersMu.RLock()
     fmt.Fprintf(w, "<h1>Eve Market Dump</h1>\n")
     fmt.Fprintf(w, "<h2>Locations</h2><hr>\n")
-    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a>\n", "/location", time.Unix(globalLocations.Date, 0).Format("2006-01-02T15:04:05Z"), "location dump")
+    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a><br>\n", "/location", time.Unix(globalLocations.Date, 0).Format("2006-01-02T15:04:05Z"), "location dump")
     fmt.Fprintf(w, "<h2>Orders</h2><hr>\n")
-    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a>\n", "/order", time.Unix(globalOrders.Date, 0).Format("2006-01-02T15:04:05Z"), "order dump")
+    fmt.Fprintf(w, "<a href=\"%s\">%s %s</a><br>\n", "/order", time.Unix(globalOrders.Date, 0).Format("2006-01-02T15:04:05Z"), "order dump")
     fmt.Fprintf(w, "<h2>Histories</h2><hr>\n")
     for _, h := range globalHistories {
-      fmt.Fprintf(w, "<a href=\"/history/%d\">%s history dump</a>\n", h.Date, time.Unix(h.Date, 0).Format("2006-01-02T15:04:05Z"))
+      fmt.Fprintf(w, "<a href=\"/history/%d\">%s history dump</a><br>\n", h.Date, time.Unix(h.Date, 0).Format("2006-01-02T15:04:05Z"))
     }
     globalLocationsMu.RUnlock()
     globalHistoriesMu.RUnlock()
@@ -229,7 +231,10 @@ func httpServerWorker(ctx context.Context) {
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
     globalLocationsMu.RLock()
-    json.NewEncoder(w).Encode(globalLocations.Data)
+    err := json.NewEncoder(w).Encode(globalLocations.Data)
+    if err != nil {
+      log.Printf("Http Server Worker Error: encode location response: %v", err)
+    }
     globalLocationsMu.RUnlock()
   }
 
@@ -237,7 +242,10 @@ func httpServerWorker(ctx context.Context) {
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusCreated)
     globalOrdersMu.RLock()
-    json.NewEncoder(w).Encode(globalOrders.Data)
+    err := json.NewEncoder(w).Encode(globalOrders.Data)
+    if err != nil {
+      log.Printf("Http Server Worker Error: encode order response: %v", err)
+    }
     globalOrdersMu.RUnlock()
   }
 
@@ -254,7 +262,10 @@ func httpServerWorker(ctx context.Context) {
         globalHistoriesMu.RUnlock()
         w.Header().Set("Content-Type", "application/json")
         w.WriteHeader(http.StatusCreated)
-        json.NewEncoder(w).Encode(h.Data)
+        err := json.NewEncoder(w).Encode(h.Data)
+        if err != nil {
+          log.Printf("Http Server Worker Error: encode history response: %v", err)
+        }
         return
       }
     }
@@ -303,10 +314,6 @@ func getElevenFifteenTomorrow(now time.Time) time.Time {
   return time.Date(now.Year(), now.Month(), now.Day()+1, 11, 15, 0, 0, now.Location())
 }
 
-func getToday(now time.Time) time.Time {
-  return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-}
-
 func getYesterday(now time.Time) time.Time {
   return time.Date(now.Year(), now.Month(), now.Day()-1, 0, 0, 0, 0, now.Location())
 }
@@ -324,7 +331,7 @@ func getActiveMarkets(orders []emd.Order) []emd.HistoryMarket {
   return activeMarkets
 }
 
-func getUnknownLocations(orders []emd.Order, knownLocations []emd.Location, forbiddenLocation []uint64) ([]uint64) {
+func getUnknownLocations(orders []emd.Order, knownLocations []emd.Location, forbiddenLocations []uint64) ([]uint64) {
   unknownLocations := make([]uint64, 0, 32)
 OrderLoop:
   for _, o := range orders {
@@ -333,10 +340,11 @@ OrderLoop:
         continue OrderLoop
       }
     }
-    for _, lId := range forbiddenLocation {
-      if o.LocationId == lId {
-        continue OrderLoop
-      }
+    if slices.Contains(forbiddenLocations, o.LocationId) {
+      continue OrderLoop
+    }
+    if slices.Contains(unknownLocations, o.LocationId) {
+      continue OrderLoop
     }
     unknownLocations = append(unknownLocations, o.LocationId)
   }
