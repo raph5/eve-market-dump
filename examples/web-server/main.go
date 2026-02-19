@@ -238,6 +238,8 @@ func httpServerWorker(ctx context.Context) {
 		globalLocationsMu.RUnlock()
 	}
 
+  // NOTE: The endponit sends around 350megs of json. If you are sending this
+  // over the network you should at least gzip it.
 	handleOrder := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
