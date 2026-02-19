@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -229,9 +230,9 @@ func httpServerWorker(ctx context.Context) {
 
   handleLocation := func (w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusCreated)
+    w.WriteHeader(http.StatusOK)
     globalLocationsMu.RLock()
-    err := json.NewEncoder(w).Encode(globalLocations.Data)
+    err := jsonEncodeArray(w, globalLocations.Data)
     if err != nil {
       log.Printf("Http Server Worker Error: encode location response: %v", err)
     }
@@ -240,9 +241,9 @@ func httpServerWorker(ctx context.Context) {
 
   handleOrder := func (w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusCreated)
+    w.WriteHeader(http.StatusOK)
     globalOrdersMu.RLock()
-    err := json.NewEncoder(w).Encode(globalOrders.Data)
+    err := jsonEncodeArray(w, globalOrders.Data)
     if err != nil {
       log.Printf("Http Server Worker Error: encode order response: %v", err)
     }
@@ -261,8 +262,8 @@ func httpServerWorker(ctx context.Context) {
       if h.Date == int64(date) {
         globalHistoriesMu.RUnlock()
         w.Header().Set("Content-Type", "application/json")
-        w.WriteHeader(http.StatusCreated)
-        err := json.NewEncoder(w).Encode(h.Data)
+        w.WriteHeader(http.StatusOK)
+        err := jsonEncodeArray(w, h.Data)
         if err != nil {
           log.Printf("Http Server Worker Error: encode history response: %v", err)
         }
@@ -362,6 +363,35 @@ func sleepWithContext(ctx context.Context, duration time.Duration) error {
 		}
 		return ctx.Err()
 	}
+}
+
+// Encode array with resoanble memory usage
+func jsonEncodeArray[T any](w io.Writer, array []T) error {
+  _, err := w.Write([]byte("["))
+  if err != nil {
+    return err
+  }
+  for i := range array {
+    if i > 0 {
+      _, err = w.Write([]byte(","))
+      if err != nil {
+        return err
+      }
+    }
+    el, err := json.Marshal(array[i])
+    if err != nil {
+      return err
+    }
+    _, err = w.Write(el)
+    if err != nil {
+      return err
+    }
+  }
+  _, err = w.Write([]byte("]"))
+  if err != nil {
+    return err
+  }
+  return nil
 }
 
 func main() {
