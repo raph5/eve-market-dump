@@ -258,6 +258,7 @@ func httpServerWorker(ctx context.Context) {
 			return
 		}
 
+    // BUG: There is a memory leak/misuse here
 		globalHistoriesMu.RLock()
 		for _, h := range globalHistories {
 			if h.Date == int64(date) {

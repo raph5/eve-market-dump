@@ -260,9 +260,9 @@ func DownloadIncrementalHistoryDump(
 		var esiError *esiError
 		isEsiError := errors.As(err, &esiError)
 		if isEsiError && (esiError.code == 400 || esiError.code == 404) {
-      // Skip this market
-      continue
-    } else if err != nil && trails > 1 && !isEsiError {
+			// Skip this market
+			continue
+		} else if err != nil && trails > 1 && !isEsiError {
 			if isLoggingEnabled(ctx) {
 				log.Print("DownloadIncrementalHistoryDump: Encountered an error while downloading histories, taking a 15 minutes break")
 			}
