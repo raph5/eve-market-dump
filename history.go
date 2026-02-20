@@ -253,12 +253,16 @@ func DownloadIncrementalHistoryDump(
 			return nil, err
 		}
 
-		var esiError *esiError
 		trails := 3
 	TryAgain:
 		uri := fmt.Sprintf("/markets/%d/history?type_id=%d", m.RegionId, m.TypeId)
 		response, err := esiFetch[[]esiHistoryDay](ctx, "GET", uri, false, nil, 5)
-		if err != nil && trails > 1 && !errors.As(err, &esiError) {
+		var esiError *esiError
+		isEsiError := errors.As(err, &esiError)
+		if isEsiError && (esiError.code == 400 || esiError.code == 404) {
+      // Skip this market
+      continue
+    } else if err != nil && trails > 1 && !isEsiError {
 			if isLoggingEnabled(ctx) {
 				log.Print("DownloadIncrementalHistoryDump: Encountered an error while downloading histories, taking a 15 minutes break")
 			}
