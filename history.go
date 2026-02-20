@@ -159,7 +159,7 @@ func DownloadFullHistoryDump(
 		if isEsiError && (esiError.code == 400 || esiError.code == 404) {
 			// Skip this market
 			continue
-		} else if err != nil && trails > 1 && !isEsiError {
+		} else if err != nil && trails > 1 && !isEsiError && !errors.Is(err, context.Canceled) {
 			if isLoggingEnabled(ctx) {
 				log.Print("DownloadFullHistoryDump: Encountered an error while downloading histories, taking a 15 minutes break")
 			}
@@ -260,7 +260,7 @@ func DownloadIncrementalHistoryDump(
 		if isEsiError && (esiError.code == 400 || esiError.code == 404) {
 			// Skip this market
 			continue
-		} else if err != nil && trails > 1 && !isEsiError {
+		} else if err != nil && trails > 1 && !isEsiError && !errors.Is(err, context.Canceled) {
 			if isLoggingEnabled(ctx) {
 				log.Print("DownloadIncrementalHistoryDump: Encountered an error while downloading histories, taking a 15 minutes break")
 			}
