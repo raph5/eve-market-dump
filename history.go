@@ -106,7 +106,6 @@ func (s *HistorySnapshot) GetHistoryDataForDay(ctx context.Context, requestDate 
 // Don't forget to defer the call to Close to remove the snapshot data from
 // disk when you finished using it. Close can be called multiple times
 func (s *HistorySnapshot) Close() error {
-	// BUG: Sometimes the snapshot file is not removed properly
 	if !s.closed {
 		// this lock should not block if ctx.Done
 		s.fileMu.Lock()
@@ -119,7 +118,6 @@ func (s *HistorySnapshot) Close() error {
 		if err != nil {
 			return fmt.Errorf("remove: %w", err)
 		}
-		log.Printf("Debug: successfully removed %v", s.file.Name())
 		s.closed = true
 	}
 	return nil

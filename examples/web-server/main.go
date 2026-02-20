@@ -258,14 +258,13 @@ func httpServerWorker(ctx context.Context) {
 			return
 		}
 
-    // BUG: There is a memory leak/misuse here
 		globalHistoriesMu.RLock()
-		for _, h := range globalHistories {
-			if h.Date == int64(date) {
+		for i := range globalHistories {
+			if globalHistories[i].Date == int64(date) {
 				globalHistoriesMu.RUnlock()
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				err := jsonEncodeArray(w, h.Data)
+				err := jsonEncodeArray(w, globalHistories[i].Data)
 				if err != nil {
 					log.Printf("Http Server Worker Error: encode history response: %v", err)
 				}

@@ -16,7 +16,8 @@ go library.
 
 # Examples
 
-An example web server using this library is available is the /example directory
+An example web server using this library is available is the /example
+directory.
 
 # Documentation
 
