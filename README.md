@@ -19,6 +19,17 @@ go library.
 An example web server using this library is available is the /example
 directory.
 
+# Eve Online Data
+
+Embedded in the application binary is the data relative to every system and
+every NPC station in Eve Online. If this data gets out of date,
+`DownloadLocationDump` might return an error of type `ErrUnknownNpcStation` or
+`ErrUnknownSystem`. In that case you need to update the CSVs in the /data
+directory by running the associated bash scripts. Note that those bash scripts
+pull their data from a third part site called https://www.fuzzwork.co.uk/. If
+this data source gets out of date from the actual game you will need generate
+the data yourself.
+
 # Documentation
 
 ```go
