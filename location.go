@@ -17,6 +17,7 @@ type Location struct {
 	TypeId   uint64 // station type id
 	OwnerId  uint64 // station corporation id
 	SystemId uint64
+	RegionId uint64
 	Security float32
 	Name     string
 }
@@ -32,6 +33,7 @@ type station struct {
 
 type system struct {
 	id       uint64
+	regionId uint64
 	security float32
 }
 
@@ -72,13 +74,13 @@ func init() {
 // note that forbiddenLocations are returns even the functions errors
 func DownloadLocationDump(
 	ctx context.Context,
-	unknown_location []uint64,
+	unknownLocation []uint64,
 	secrets *ApiSecrets,
 ) ([]Location /* forbiddenLocations */, []uint64, error) {
-	locationData := make([]Location, 0, len(unknown_location))
-	forbiddenLocations := make([]uint64, 0, len(unknown_location))
+	locationData := make([]Location, 0, len(unknownLocation))
+	forbiddenLocations := make([]uint64, 0, len(unknownLocation))
 
-	for _, locId := range unknown_location {
+	for _, locId := range unknownLocation {
 		isNpcStation := locId >= 60000000 && locId <= 64000000
 		if isNpcStation {
 			station := getStationById(stations, locId)
@@ -115,7 +117,8 @@ func DownloadLocationDump(
 				Id:       locId,
 				Security: system.security,
 				TypeId:   response.data.TypeId,
-				SystemId: response.data.SystemId,
+				SystemId: system.id,
+				RegionId: system.regionId,
 				OwnerId:  response.data.OwnerId,
 				Name:     response.data.Name,
 			})
@@ -149,7 +152,7 @@ func readSystemSvg() ([]system, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reader error: %w", err)
 	}
-	if record[0] != "solarSystemID" || record[1] != "security" {
+	if record[0] != "regionID" || record[1] != "solarSystemID" || record[2] != "security" {
 		return nil, fmt.Errorf("invalid system csv header %v", record)
 	}
 
@@ -163,17 +166,22 @@ func readSystemSvg() ([]system, error) {
 			return nil, fmt.Errorf("record read: %w", err)
 		}
 
-		id, err := strconv.ParseUint(record[0], 10, 64)
+		regionId, err := strconv.ParseUint(record[0], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("regionId in not a valid uint64: %w", err)
+		}
+		id, err := strconv.ParseUint(record[1], 10, 64)
 		if err != nil {
 			return nil, fmt.Errorf("id in not a valid uint64: %w", err)
 		}
-		security, err := strconv.ParseFloat(record[1], 32)
+		security, err := strconv.ParseFloat(record[2], 32)
 		if err != nil {
 			return nil, fmt.Errorf("security in not a valid float32: %w", err)
 		}
 
 		systemSlice = append(systemSlice, system{
 			id:       id,
+			regionId: regionId,
 			security: float32(security),
 		})
 	}

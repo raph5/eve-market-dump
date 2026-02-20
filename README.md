@@ -69,6 +69,7 @@ type Location struct {
 	TypeId   uint64 // station type id
 	OwnerId  uint64 // station corporation id
 	SystemId uint64
+	RegionId uint64
 	Security float32
 	Name     string
 }
@@ -78,7 +79,7 @@ type Location struct {
 // suffer error rate timeouts from the ESI.
 func DownloadLocationDump(
 	ctx context.Context,
-	unknown_location []uint64,
+	unknownLocation []uint64,
 	secrets *ApiSecrets,
 ) ([]Location, /* forbiddenLocations */ []uint64, error)
 
