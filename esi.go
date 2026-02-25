@@ -155,6 +155,7 @@ func esiFetch[T any](
 			}
 		}
 		esiSetTimeout(timeout)
+
 		if isLoggingEnabled(ctx) {
 			log.Printf("Esi fetch: %fs request rate timeout", timeout.Seconds())
 		}
