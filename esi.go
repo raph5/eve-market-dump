@@ -128,12 +128,37 @@ func esiFetch[T any](
 
 	// Handle request rate timeout
 	if response.StatusCode == 429 {
+		// See https://developers.eveonline.com/docs/services/esi/rate-limiting/#token-system
 		// NOTE: one day, CCP will maybe add a `Retry-After` header to their
 		// responses
-		if isLoggingEnabled(ctx) {
-			log.Printf("Esi fetch: 20s implicit esi timeout %d", response.StatusCode)
+		var timeout time.Duration
+		retryAfter := response.Header.Get("Retry-After")
+		if len(retryAfter) == 0 {
+			if isLoggingEnabled(ctx) {
+				log.Printf("Esi fetch: No Retry-After provided")
+			}
+			timeout = 20 * time.Second
+		} else {
+			secs, err := strconv.Atoi(retryAfter)
+			if err != nil {
+				if isLoggingEnabled(ctx) {
+					log.Printf("Esi fetch: Can't decode Retry-After: '%s'", retryAfter)
+				}
+				timeout = 20 * time.Second
+			} else if secs < 0 || secs > 240 {
+				if isLoggingEnabled(ctx) {
+					log.Printf("Esi fetch: Retry-After out of range: %ds", secs)
+				}
+				timeout = 20 * time.Second
+			} else {
+				timeout = time.Duration(secs) * time.Second
+			}
 		}
-		return retry(ErrImplicitTimeout)
+		esiSetTimeout(timeout)
+		if isLoggingEnabled(ctx) {
+			log.Printf("Esi fetch: %fs request rate timeout", timeout.Seconds())
+		}
+		return retry(ErrErrorRateTimeout)
 	}
 
 	// Handle error rate timeout
